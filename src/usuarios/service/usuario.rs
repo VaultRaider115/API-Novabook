@@ -187,8 +187,14 @@ impl UsuarioService {
     pub async fn crear_usuario(
         pool: &DbPool,
         actor_id: i64,
+        actor_rol: RolEnum,
         req: CrearUsuarioRequest,
     ) -> Result<UsuarioDto, AppError> {
+        if actor_rol != RolEnum::Gerente {
+            return Err(AppError::BadRequest(
+                "Solo un Gerente General puede registrar nuevos usuarios".to_string(),
+            ));
+        }
         if req.id_usuarios <= 0 {
             return Err(AppError::BadRequest(
                 "ID de usuario debe ser mayor a 0".to_string(),
@@ -268,6 +274,7 @@ impl UsuarioService {
     pub async fn actualizar_usuario(
         pool: &DbPool,
         actor_id: i64,
+        actor_rol: RolEnum,
         id: i64,
         req: ActualizarUsuarioRequest,
     ) -> Result<UsuarioDto, AppError> {
@@ -275,9 +282,23 @@ impl UsuarioService {
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Usuario #{} no encontrado", id)))?;
 
+        let gerente_id = RolEnum::Gerente.to_id();
+        if actor_rol != RolEnum::Gerente && actual.id_roles == gerente_id {
+            return Err(AppError::BadRequest(
+                "No tienes permisos para modificar a un Gerente General".to_string(),
+            ));
+        }
+
+
         if id == actor_id && req.estatus == Some(false) {
             return Err(AppError::BadRequest(
                 "No puedes desactivar tu propio usuario".to_string(),
+            ));
+        }
+
+        if id == actor_id && req.id_roles.is_some_and(|r| r != actual.id_roles) {
+            return Err(AppError::BadRequest(
+                "No puedes cambiar tu propio rol".to_string(),
             ));
         }
 
@@ -285,6 +306,12 @@ impl UsuarioService {
             && RolEnum::from_id(r).is_none()
         {
             return Err(AppError::BadRequest(format!("Rol inválido: {}", r)));
+        }
+
+        if actor_rol != RolEnum::Gerente && req.id_roles == Some(gerente_id) {
+            return Err(AppError::BadRequest(
+                "No tienes permisos para asignar el rol de Gerente General".to_string(),
+            ));
         }
 
         let nuevo_rol = req.id_roles.unwrap_or(actual.id_roles);
@@ -358,7 +385,12 @@ impl UsuarioService {
         Ok(actualizado.into())
     }
 
-    pub async fn eliminar_usuario(pool: &DbPool, actor_id: i64, id: i64) -> Result<(), AppError> {
+    pub async fn eliminar_usuario(
+        pool: &DbPool,
+        actor_id: i64,
+        actor_rol: RolEnum,
+        id: i64,
+    ) -> Result<(), AppError> {
         if id == actor_id {
             return Err(AppError::BadRequest(
                 "No puedes eliminar tu propio usuario".to_string(),
@@ -369,13 +401,19 @@ impl UsuarioService {
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Usuario #{} no encontrado", id)))?;
 
+        let gerente_id = RolEnum::Gerente.to_id();
+        if actor_rol != RolEnum::Gerente && actual.id_roles == gerente_id {
+            return Err(AppError::BadRequest(
+                "No tienes permisos para dar de baja a un Gerente General".to_string(),
+            ));
+        }
+
         if !actual.estado {
             return Err(AppError::BadRequest(
                 "El usuario ya se encuentra inactivo".to_string(),
             ));
         }
 
-        let gerente_id = RolEnum::Gerente.to_id();
         if actual.id_roles == gerente_id {
             let gerentes_activos = UsuarioRepo::contar_activos_por_rol(pool, gerente_id).await?;
             if gerentes_activos <= 1 {
