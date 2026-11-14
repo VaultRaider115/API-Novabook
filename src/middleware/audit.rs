@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    http::{Request, header::AUTHORIZATION},
+    http::{Method, Request, header::AUTHORIZATION},
     middleware::Next,
     response::Response,
 };
@@ -15,6 +15,14 @@ pub async fn audit_middleware(
     request: Request<axum::body::Body>,
     next: Next,
 ) -> Response {
+    let method = request.method().clone();
+    let path = request.uri().path().to_string();
+
+    if matches!(method, Method::GET | Method::HEAD | Method::OPTIONS) || path == "/api/auth/login"
+    {
+        return next.run(request).await;
+    }
+
     let actor_id = request
         .headers()
         .get(AUTHORIZATION)
@@ -23,8 +31,6 @@ pub async fn audit_middleware(
         .and_then(|token| verify_jwt(token.trim(), &state.config.jwt_secret).ok())
         .map(|claims| claims.id_usuario);
 
-    let method = request.method().to_string();
-    let path = request.uri().path().to_string();
     let response = next.run(request).await;
 
     if let Some(actor_id) = actor_id {
