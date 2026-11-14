@@ -37,6 +37,36 @@ impl GeneroRepo {
             .collect())
     }
 
+    pub async fn existe_por_nombre(
+        pool: &DbPool,
+        nombre: &str,
+        excluir_id: Option<i32>,
+    ) -> Result<bool, AppError> {
+        let row = match excluir_id {
+            Some(id) => {
+                sqlx::query(
+                    "SELECT id_genero FROM genero WHERE LOWER(TRIM(genero_literario)) = LOWER(?) AND id_genero <> ? LIMIT 1",
+                )
+                .bind(nombre.trim())
+                .bind(id)
+                .fetch_optional(pool)
+                .await
+                .map_err(AppError::Database)?
+            }
+            None => {
+                sqlx::query(
+                    "SELECT id_genero FROM genero WHERE LOWER(TRIM(genero_literario)) = LOWER(?) LIMIT 1",
+                )
+                .bind(nombre.trim())
+                .fetch_optional(pool)
+                .await
+                .map_err(AppError::Database)?
+            }
+        };
+
+        Ok(row.is_some())
+    }
+
     pub async fn crear_genero(pool: &DbPool, req: &CrearGeneroRequest) -> Result<Genero, AppError> {
         let res = sqlx::query("INSERT INTO genero (genero_literario) VALUES (?)")
             .bind(&req.genero_literario)
