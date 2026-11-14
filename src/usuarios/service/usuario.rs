@@ -69,6 +69,15 @@ fn validate_phone(phone: Option<i64>) -> Result<(), AppError> {
     Ok(())
 }
 
+fn validate_person_name(value: &str, field: &str) -> Result<(), AppError> {
+    if value.chars().any(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(format!(
+            "{field} no puede contener números"
+        )));
+    }
+    Ok(())
+}
+
 pub struct UsuarioService;
 
 impl UsuarioService {
@@ -196,6 +205,15 @@ impl UsuarioService {
             "El apellido materno",
             MAX_SURNAME_LENGTH,
         )?;
+
+        validate_person_name(&req.nombre, "El nombre")?;
+        if let Some(pat) = req.apellido_paterno.as_deref() {
+            validate_person_name(pat, "El apellido paterno")?;
+        }
+        if let Some(mat) = req.apellido_materno.as_deref() {
+            validate_person_name(mat, "El apellido materno")?;
+        }
+
         validate_phone(req.telefono)?;
         if RolEnum::from_id(req.id_roles).is_none() {
             return Err(AppError::BadRequest(format!(
@@ -217,6 +235,16 @@ impl UsuarioService {
             req.contrasena = bcrypt::hash(&req.contrasena, 10)
                 .map_err(|e| AppError::Internal(format!("Error al hashear contraseña: {}", e)))?;
         }
+
+        req.nombre = req.nombre.trim().to_string();
+        req.apellido_paterno = req
+            .apellido_paterno
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        req.apellido_materno = req
+            .apellido_materno
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
 
         UsuarioRepo::crear(pool, &req).await?;
 
@@ -247,27 +275,61 @@ impl UsuarioService {
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Usuario #{} no encontrado", id)))?;
 
+        if id == actor_id && req.estatus == Some(false) {
+            return Err(AppError::BadRequest(
+                "No puedes desactivar tu propio usuario".to_string(),
+            ));
+        }
+
         if let Some(r) = req.id_roles
-            && RolEnum::from_id(r).is_none() {
-                return Err(AppError::BadRequest(format!("Rol inválido: {}", r)));
+            && RolEnum::from_id(r).is_none()
+        {
+            return Err(AppError::BadRequest(format!("Rol inválido: {}", r)));
+        }
+
+        let nuevo_rol = req.id_roles.unwrap_or(actual.id_roles);
+        let nuevo_estado = req.estatus.unwrap_or(actual.estado);
+        let gerente_id = RolEnum::Gerente.to_id();
+
+        if actual.id_roles == gerente_id
+            && actual.estado
+            && (nuevo_rol != gerente_id || !nuevo_estado)
+        {
+            let gerentes_activos = UsuarioRepo::contar_activos_por_rol(pool, gerente_id).await?;
+            if gerentes_activos <= 1 {
+                return Err(AppError::BadRequest(
+                    "Debe permanecer al menos un gerente activo en el sistema".to_string(),
+                ));
             }
+        }
 
         if let Some(nombre) = req.nombre.as_deref() {
             validate_required_text(nombre, "El nombre", MAX_NAME_LENGTH)?;
+            validate_person_name(nombre, "El nombre")?;
         }
         validate_optional_text(
             req.apellido_paterno.as_deref(),
             "El apellido paterno",
             MAX_SURNAME_LENGTH,
         )?;
+        if let Some(pat) = req.apellido_paterno.as_deref() {
+            validate_person_name(pat, "El apellido paterno")?;
+        }
         validate_optional_text(
             req.apellido_materno.as_deref(),
             "El apellido materno",
             MAX_SURNAME_LENGTH,
         )?;
+        if let Some(mat) = req.apellido_materno.as_deref() {
+            validate_person_name(mat, "El apellido materno")?;
+        }
         validate_phone(req.telefono)?;
 
         let mut req = req;
+        req.nombre = req.nombre.map(|s| s.trim().to_string());
+        req.apellido_paterno = req.apellido_paterno.map(|s| s.trim().to_string());
+        req.apellido_materno = req.apellido_materno.map(|s| s.trim().to_string());
+
         if req.contrasena.as_deref() == Some("") {
             req.contrasena = None;
         }
@@ -275,11 +337,13 @@ impl UsuarioService {
             validate_password(pass, true)?;
         }
         if let Some(ref pass) = req.contrasena
-            && !pass.starts_with("$2b$") && !pass.starts_with("$2a$") {
-                req.contrasena = Some(bcrypt::hash(pass, 10).map_err(|e| {
-                    AppError::Internal(format!("Error al hashear contraseña: {}", e))
-                })?);
-            }
+            && !pass.starts_with("$2b$")
+            && !pass.starts_with("$2a$")
+        {
+            req.contrasena = Some(bcrypt::hash(pass, 10).map_err(|e| {
+                AppError::Internal(format!("Error al hashear contraseña: {}", e))
+            })?);
+        }
 
         let actualizado = UsuarioRepo::actualizar(pool, id, &actual, &req).await?;
 
@@ -299,6 +363,26 @@ impl UsuarioService {
             return Err(AppError::BadRequest(
                 "No puedes eliminar tu propio usuario".to_string(),
             ));
+        }
+
+        let actual = UsuarioRepo::buscar_por_id(pool, id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Usuario #{} no encontrado", id)))?;
+
+        if !actual.estado {
+            return Err(AppError::BadRequest(
+                "El usuario ya se encuentra inactivo".to_string(),
+            ));
+        }
+
+        let gerente_id = RolEnum::Gerente.to_id();
+        if actual.id_roles == gerente_id {
+            let gerentes_activos = UsuarioRepo::contar_activos_por_rol(pool, gerente_id).await?;
+            if gerentes_activos <= 1 {
+                return Err(AppError::BadRequest(
+                    "No puedes dar de baja al único gerente activo del sistema".to_string(),
+                ));
+            }
         }
 
         let eliminado = UsuarioRepo::eliminar(pool, id).await?;
