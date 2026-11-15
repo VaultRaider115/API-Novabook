@@ -140,6 +140,8 @@ pub fn router(state: AppState) -> Router<AppState> {
             post(movimiento::movimiento_bodega_tienda_revistas),
         )
         .route("/requisiciones", post(movimiento::requisicion_salida_bodega))
+        // Títulos y editorial para armar la requisición de salida.
+        .route("/existencias", get(inventario::consultar_existencias_vendedor))
         .route("/compras", post(compra::registrar_compra_bodega))
         .route("/compras", get(compra::listar_compras_bodega))
         .layer(middleware::from_fn(require_bodega))

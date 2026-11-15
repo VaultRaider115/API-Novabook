@@ -66,6 +66,8 @@ pub struct RequisicionResponse {
     pub fecha_hora: String,
     pub tipo_movimiento: TipoMovimiento,
     pub total_piezas: i32,
+    /// Editorial (proveedor) del documento: una sola por requisición.
+    pub editorial: String,
     pub items: Vec<PartidaRequisicionResp>,
 }
 

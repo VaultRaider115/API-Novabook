@@ -69,9 +69,10 @@ impl MovimientoService {
             actor_id,
             accion,
             &format!(
-                "Requisición {} {}: {} unidades en {} partida(s)",
+                "Requisición {} {} ({}): {} unidades en {} partida(s)",
                 reg.folio,
                 if origen == UBICACION_BODEGA { "Bodega-Piso" } else { "Piso-Bodega" },
+                reg.editorial,
                 total_piezas,
                 reg.items.len()
             ),
@@ -83,6 +84,7 @@ impl MovimientoService {
             fecha_hora: reg.fecha_hora,
             tipo_movimiento: tipo,
             total_piezas,
+            editorial: reg.editorial,
             items: reg.items,
         })
     }

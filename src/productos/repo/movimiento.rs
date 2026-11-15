@@ -24,6 +24,7 @@ struct TrasladoTx {
 pub struct RequisicionRegistrada {
     pub folio: String,
     pub fecha_hora: String,
+    pub editorial: String,
     pub items: Vec<PartidaRequisicionResp>,
 }
 
@@ -89,6 +90,7 @@ impl MovimientoRepo {
         observaciones: Option<&str>,
     ) -> Result<RequisicionRegistrada, AppError> {
         let mut tx = pool.begin().await.map_err(AppError::Database)?;
+        let editorial = Self::editorial_unica(&mut tx, items).await?;
 
         let mut ids: Vec<i64> = Vec::new();
         let mut partidas = Vec::with_capacity(items.len());
@@ -147,7 +149,44 @@ impl MovimientoRepo {
         upd.build().execute(&mut *tx).await.map_err(AppError::Database)?;
 
         tx.commit().await.map_err(AppError::Database)?;
-        Ok(RequisicionRegistrada { folio, fecha_hora, items: partidas })
+        Ok(RequisicionRegistrada { folio, fecha_hora, editorial, items: partidas })
+    }
+
+    /// Diagrama, pasos 2 y 6: una sola editorial (proveedor) por documento.
+    /// Devuelve el nombre de esa editorial; un EAN inexistente se deja pasar
+    /// aquí para que el traslado lo reporte con su propio mensaje.
+    async fn editorial_unica(tx: &mut Tx<'_>, items: &[PartidaRequisicion]) -> Result<String, AppError> {
+        // (id_proveedor, nombre, ean, título) de la primera partida encontrada.
+        let mut primera: Option<(i32, String, i64, String)> = None;
+        for it in items {
+            let fila = sqlx::query(
+                "SELECT p.id_proveedor, pr.nombre_proveedor, \
+                        COALESCE(l.nombre_libro, r.nombre_revista, '') AS titulo \
+                 FROM productos p JOIN proveedor pr ON pr.id_proveedor = p.id_proveedor \
+                 LEFT JOIN libros l ON l.codigo_ean = p.codigo_ean \
+                 LEFT JOIN revistas r ON r.codigo_ean = p.codigo_ean WHERE p.codigo_ean = ?",
+            )
+            .bind(it.codigo_ean)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(AppError::Database)?;
+            let Some(fila) = fila else { continue };
+            let id: i32 = fila.get("id_proveedor");
+            let nombre: String = fila.get("nombre_proveedor");
+            let titulo: String = fila.get("titulo");
+            match &primera {
+                None => primera = Some((id, nombre, it.codigo_ean, titulo)),
+                Some((id0, nombre0, ean0, titulo0)) if *id0 != id => {
+                    return Err(AppError::BadRequest(format!(
+                        "Una sola editorial por documento: \"{}\" (EAN {}) es de {} y \"{}\" (EAN {}) es de {}. \
+                         Haz una requisición aparte para cada editorial.",
+                        titulo0, ean0, nombre0, titulo, it.codigo_ean, nombre
+                    )));
+                }
+                Some(_) => {}
+            }
+        }
+        Ok(primera.map(|p| p.1).unwrap_or_default())
     }
 
     /// Lo bajado en la última salida (bodega → piso) de un producto y lo que ya

@@ -183,7 +183,7 @@ echo "  ✓ Traslado Bodega -> Tienda realizado"
 REQ_RES=$(curl -s -X POST "$BASE_URL/bodega/requisiciones" \
   -H "Authorization: Bearer $TOKEN_BODEGA" \
   -H "Content-Type: application/json" \
-  -d '{"items": [{"codigo_ean": 9786073832014, "cantidad": 1}, {"codigo_ean": 9771234567010, "cantidad": 1}]}')
+  -d '{"items": [{"codigo_ean": 9786073832014, "cantidad": 1}, {"codigo_ean": 9786070775390, "cantidad": 1}]}')
 REQ_FOLIO=$(echo "$REQ_RES" | grep -o '"folio":"REQ-[0-9]*-[0-9]*' | cut -d'"' -f4)
 if [ -z "$REQ_FOLIO" ]; then echo "Error en requisición de salida: $REQ_RES"; exit 1; fi
 echo "  ✓ Requisición de salida registrada con folio $REQ_FOLIO"
@@ -192,11 +192,19 @@ echo "  ✓ Requisición de salida registrada con folio $REQ_FOLIO"
 REQ_FAIL=$(curl -s -X POST "$BASE_URL/bodega/requisiciones" \
   -H "Authorization: Bearer $TOKEN_BODEGA" \
   -H "Content-Type: application/json" \
-  -d '{"items": [{"codigo_ean": 9786073832014, "cantidad": 1}, {"codigo_ean": 9771234567010, "cantidad": 99999}]}')
-if echo "$REQ_FAIL" | grep -q '"success":false'; then
+  -d '{"items": [{"codigo_ean": 9786073832014, "cantidad": 1}, {"codigo_ean": 9786070775390, "cantidad": 99999}]}')
+if echo "$REQ_FAIL" | grep -q '"success":false' && ! echo "$REQ_FAIL" | grep -q 'editorial'; then
   echo "  ✓ Requisición con stock insuficiente rechazada completa (no se movió nada)"
 else
   echo "Error: se aceptó una requisición sin stock: $REQ_FAIL"; exit 1
+fi
+
+# Diagrama, pasos 2 y 6: una sola editorial por documento
+REQ_MIX=$(curl -s -X POST "$BASE_URL/bodega/requisiciones"   -H "Authorization: Bearer $TOKEN_BODEGA"   -H "Content-Type: application/json"   -d '{"items": [{"codigo_ean": 9786073832014, "cantidad": 1}, {"codigo_ean": 9771234567010, "cantidad": 1}]}')
+if echo "$REQ_MIX" | grep -q 'Una sola editorial por documento'; then
+  echo "  ✓ Requisición con dos editoriales rechazada"
+else
+  echo "Error: se aceptó una requisición con dos editoriales: $REQ_MIX"; exit 1
 fi
 
 # Venta sin cliente (debe fallar)
