@@ -5,7 +5,10 @@ use crate::{
     error::AppError,
     productos::{
         model::{PartidaRequisicion, PartidaRequisicionResp},
-        repo::stock::{self, Tx, nombre_ubicacion},
+        repo::{
+            UBICACION_BODEGA, UBICACION_TIENDA,
+            stock::{self, Tx, nombre_ubicacion},
+        },
     },
 };
 
@@ -147,6 +150,37 @@ impl MovimientoRepo {
         Ok(RequisicionRegistrada { folio, fecha_hora, items: partidas })
     }
 
+    /// Lo bajado en la última salida (bodega → piso) de un producto y lo que ya
+    /// regresó (piso → bodega) desde entonces. `None` si nunca se bajó.
+    async fn ultima_bajada(tx: &mut Tx<'_>, codigo_ean: i64) -> Result<Option<(i32, i32, String)>, AppError> {
+        // Una salida puede generar varias filas (una por mueble de origen) con la misma fecha.
+        let fila = sqlx::query(
+            "SELECT DATE_FORMAT(b.ultima, '%Y-%m-%d %H:%i') AS fecha,                (SELECT COALESCE(SUM(mv.cantidad), 0) FROM movimientos mv                   JOIN mueble mo ON mo.id_mueble = mv.mueble_origen JOIN mueble md ON md.id_mueble = mv.mueble_destino                  WHERE mv.codigo_ean = ? AND mo.id_ubicacion = 2 AND md.id_ubicacion = 1 AND mv.fecha_hora = b.ultima) AS bajado,                (SELECT COALESCE(SUM(mv.cantidad), 0) FROM movimientos mv                   JOIN mueble mo ON mo.id_mueble = mv.mueble_origen JOIN mueble md ON md.id_mueble = mv.mueble_destino                  WHERE mv.codigo_ean = ? AND mo.id_ubicacion = 1 AND md.id_ubicacion = 2 AND mv.fecha_hora >= b.ultima) AS regresado              FROM (SELECT MAX(mv.fecha_hora) AS ultima FROM movimientos mv                      JOIN mueble mo ON mo.id_mueble = mv.mueble_origen JOIN mueble md ON md.id_mueble = mv.mueble_destino                     WHERE mv.codigo_ean = ? AND mo.id_ubicacion = 2 AND md.id_ubicacion = 1) b              WHERE b.ultima IS NOT NULL",
+        )
+        .bind(codigo_ean)
+        .bind(codigo_ean)
+        .bind(codigo_ean)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(AppError::Database)?;
+        Ok(fila.map(|f| (crate::db::row_get_i32(&f, "bajado"), crate::db::row_get_i32(&f, "regresado"), f.get("fecha"))))
+    }
+
+    async fn validar_retorno_a_bodega(tx: &mut Tx<'_>, codigo_ean: i64, cantidad: i32) -> Result<(), AppError> {
+        // Lo que llegó a piso sin una salida (p. ej. devolución de cliente) no tiene límite.
+        let Some((bajado, regresado, fecha)) = Self::ultima_bajada(tx, codigo_ean).await? else {
+            return Ok(());
+        };
+        let puede = max_retornable(bajado, regresado);
+        if cantidad > puede {
+            return Err(AppError::BadRequest(format!(
+                "Del EAN {} se bajaron {} a piso el {} y ya regresaron {}: solo pueden regresar {} más (como máximo la mitad; se debe exhibir al menos la otra mitad). Se pidieron {}.",
+                codigo_ean, bajado, fecha, regresado, puede, cantidad
+            )));
+        }
+        Ok(())
+    }
+
     /// Núcleo del traslado dentro de una transacción ya abierta.
     /// `tipo = None` acepta el tipo que tenga el producto en la BD.
     #[allow(clippy::too_many_arguments)]
@@ -187,6 +221,12 @@ impl MovimientoRepo {
                 "Stock insuficiente de EAN {} en {}. Disponible: {}, Solicitado: {}",
                 codigo_ean, nombre_ubicacion(origen), disponible, cantidad
             )));
+        }
+
+        // Diagrama, pasos 3 y 6: de piso solo puede regresar a bodega hasta la
+        // mitad de lo que se bajó en la última salida (se exhibe al menos la mitad).
+        if origen == UBICACION_TIENDA && destino == UBICACION_BODEGA {
+            Self::validar_retorno_a_bodega(tx, codigo_ean, cantidad).await?;
         }
 
         let id_destino = match mueble_destino {
@@ -243,5 +283,26 @@ impl MovimientoRepo {
         };
 
         Ok(TrasladoTx { restante, nuevo_destino, tipo_producto: tipo_db, ids_movimiento })
+    }
+}
+
+/// Piezas que aún pueden regresar a bodega: la mitad (hacia abajo) de lo bajado
+/// menos lo ya regresado. Bajaron 16 → 8; bajaron 15 → 7.
+fn max_retornable(bajado: i32, regresado: i32) -> i32 {
+    (bajado / 2 - regresado).max(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::max_retornable;
+
+    #[test]
+    fn regresa_como_maximo_la_mitad_de_lo_bajado() {
+        assert_eq!(max_retornable(16, 0), 8); // ejemplo del diagrama
+        assert_eq!(max_retornable(15, 0), 7); // impar: hacia abajo
+        assert_eq!(max_retornable(16, 5), 3);
+        assert_eq!(max_retornable(16, 8), 0);
+        assert_eq!(max_retornable(16, 10), 0); // nunca negativo
+        assert_eq!(max_retornable(1, 0), 0);
     }
 }
