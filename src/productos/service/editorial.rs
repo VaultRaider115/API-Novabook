@@ -1,5 +1,5 @@
 use crate::{
-    db::{DbPool, log_bitacora},
+    db::{DbPool, existe_duplicado, log_bitacora},
     error::AppError,
     productos::{
         model::{CrearEditorialRequest, Editorial},
@@ -24,8 +24,18 @@ impl EditorialService {
         Ok(())
     }
 
+    /// Un solo registro por editorial (nombre sin repetir).
+    async fn validar_unica(pool: &DbPool, nombre: &str, excluir_id: Option<i32>) -> Result<(), AppError> {
+        if existe_duplicado(pool, "editorial", "id_editorial", &[("nombre_editorial", nombre)],
+                            excluir_id.map(i64::from)).await? {
+            return Err(AppError::Conflict(format!("Ya existe la editorial '{}'", nombre.trim())));
+        }
+        Ok(())
+    }
+
     pub async fn crear(pool: &DbPool, actor_id: i64, req: CrearEditorialRequest) -> Result<Editorial, AppError> {
         Self::validar(&req)?;
+        Self::validar_unica(pool, &req.nombre_editorial, None).await?;
         let e = EditorialRepo::crear(pool, &req).await?;
         let _ = log_bitacora(pool, actor_id, "CREAR EDITORIAL",
             &format!("Editorial registrada: {} (ID: {})", e.nombre_editorial, e.id_editorial)).await;
@@ -34,6 +44,7 @@ impl EditorialService {
 
     pub async fn actualizar(pool: &DbPool, actor_id: i64, id: i32, req: CrearEditorialRequest) -> Result<Editorial, AppError> {
         Self::validar(&req)?;
+        Self::validar_unica(pool, &req.nombre_editorial, Some(id)).await?;
         let e = EditorialRepo::actualizar(pool, id, &req).await?;
         let _ = log_bitacora(pool, actor_id, "ACTUALIZAR EDITORIAL",
             &format!("Editorial actualizada: {} (ID: {})", e.nombre_editorial, id)).await;

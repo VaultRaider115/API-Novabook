@@ -122,16 +122,11 @@ pub async fn require_gerente_o_jefe(req: Request, next: Next) -> Result<Response
     Ok(next.run(req).await)
 }
 
-/// Middleware de autorización: Permite a Bodega, Jefe y Gerente
-pub async fn require_bodega_o_gerente(req: Request, next: Next) -> Result<Response, AppError> {
-    validate_role(
-        &req,
-        &[
-            RolEnum::PersonalBodega,
-            RolEnum::Gerente,
-            RolEnum::JefeDepartamento,
-        ],
-    )?;
+/// Middleware de autorización: Jefe de Departamento o Personal de Bodega.
+/// Se usa solo para dar de alta proveedores/editoriales nuevos durante la
+/// compra (diagrama de procesos, paso 1); editar y borrar es solo del Jefe.
+pub async fn require_jefe_o_bodega(req: Request, next: Next) -> Result<Response, AppError> {
+    validate_role(&req, &[RolEnum::JefeDepartamento, RolEnum::PersonalBodega])?;
     Ok(next.run(req).await)
 }
 

@@ -1,5 +1,5 @@
 use crate::{
-    db::{DbPool, log_bitacora},
+    db::{DbPool, existe_duplicado, log_bitacora},
     error::AppError,
     productos::{
         model::{ActualizarAutorRequest, Autor, CrearAutorRequest},
@@ -15,6 +15,20 @@ fn validate_author_text(value: &str, field: &str) -> Result<(), AppError> {
         return Err(AppError::BadRequest(format!(
             "{field} no puede contener números"
         )));
+    }
+    Ok(())
+}
+
+/// Un solo registro por autor: no se repite la combinación nombre + apellidos.
+async fn validar_unico(
+    pool: &DbPool,
+    nombre: &str,
+    apellidos: &str,
+    excluir_id: Option<i32>,
+) -> Result<(), AppError> {
+    let columnas = [("nombre", nombre), ("apellidos", apellidos)];
+    if existe_duplicado(pool, "autores", "id_autores", &columnas, excluir_id.map(i64::from)).await? {
+        return Err(AppError::Conflict(format!("Ya existe el autor {} {}", nombre, apellidos)));
     }
     Ok(())
 }
@@ -43,6 +57,7 @@ impl AutorService {
         let mut req = req;
         req.nombre = req.nombre.trim().to_string();
         req.apellidos = req.apellidos.trim().to_string();
+        validar_unico(pool, &req.nombre, &req.apellidos, None).await?;
 
         let autor = AutorRepo::crear_autor(pool, &req).await?;
 
@@ -73,6 +88,7 @@ impl AutorService {
         let mut req = req;
         req.nombre = req.nombre.trim().to_string();
         req.apellidos = req.apellidos.trim().to_string();
+        validar_unico(pool, &req.nombre, &req.apellidos, Some(id)).await?;
 
         let autor = AutorRepo::actualizar_autor(pool, id, &req).await?;
 

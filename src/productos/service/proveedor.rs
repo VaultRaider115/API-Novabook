@@ -1,5 +1,5 @@
 use crate::{
-    db::{DbPool, log_bitacora},
+    db::{DbPool, existe_duplicado, log_bitacora},
     error::AppError,
     productos::{
         model::{ActualizarProveedorRequest, CrearProveedorRequest, Proveedor},
@@ -10,6 +10,23 @@ use crate::{
 pub struct ProveedorService;
 
 impl ProveedorService {
+    /// Un solo registro por proveedor: no se repite el nombre ni el RFC.
+    async fn validar_unico(
+        pool: &DbPool,
+        nombre: &str,
+        rfc: &str,
+        excluir_id: Option<i32>,
+    ) -> Result<(), AppError> {
+        let excluir = excluir_id.map(i64::from);
+        if existe_duplicado(pool, "proveedor", "id_proveedor", &[("nombre_proveedor", nombre)], excluir).await? {
+            return Err(AppError::Conflict(format!("Ya existe un proveedor llamado '{}'", nombre.trim())));
+        }
+        if existe_duplicado(pool, "proveedor", "id_proveedor", &[("rfc", rfc)], excluir).await? {
+            return Err(AppError::Conflict(format!("Ya existe un proveedor con el RFC '{}'", rfc.trim())));
+        }
+        Ok(())
+    }
+
     pub async fn listar_proveedores(pool: &DbPool) -> Result<Vec<Proveedor>, AppError> {
         ProveedorRepo::listar_proveedores(pool).await
     }
@@ -36,6 +53,7 @@ impl ProveedorService {
             ));
         }
 
+        Self::validar_unico(pool, &req.nombre_proveedor, &req.rfc, None).await?;
         let proveedor = ProveedorRepo::crear_proveedor(pool, &req).await?;
 
         let _ = log_bitacora(
@@ -69,6 +87,7 @@ impl ProveedorService {
             ));
         }
 
+        Self::validar_unico(pool, &req.nombre_proveedor, &req.rfc, Some(id)).await?;
         let proveedor = ProveedorRepo::actualizar_proveedor(pool, id, &req).await?;
 
         let _ = log_bitacora(

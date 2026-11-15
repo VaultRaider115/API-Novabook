@@ -53,6 +53,31 @@ pub async fn log_bitacora_tipo(
     Ok(())
 }
 
+/// Indica si ya existe un registro cuyas columnas coinciden con los valores dados,
+/// sin distinguir mayúsculas ni espacios al inicio/fin (catálogos sin repetidos).
+/// `tabla`, `id_col` y las columnas son nombres fijos del código, nunca datos del
+/// usuario; los valores siempre van como parámetros enlazados.
+pub async fn existe_duplicado(
+    pool: &DbPool,
+    tabla: &'static str,
+    id_col: &'static str,
+    columnas: &[(&'static str, &str)],
+    excluir_id: Option<i64>,
+) -> Result<bool, AppError> {
+    let mut qb = sqlx::QueryBuilder::<sqlx::MySql>::new(format!("SELECT 1 FROM {tabla} WHERE 1=1"));
+    for (col, valor) in columnas {
+        qb.push(format!(" AND LOWER(TRIM({col})) = LOWER(TRIM("))
+            .push_bind(valor.to_string())
+            .push("))");
+    }
+    if let Some(id) = excluir_id {
+        qb.push(format!(" AND {id_col} <> ")).push_bind(id);
+    }
+    qb.push(" LIMIT 1");
+    let fila = qb.build().fetch_optional(pool).await.map_err(AppError::Database)?;
+    Ok(fila.is_some())
+}
+
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use sqlx::Row;

@@ -29,13 +29,13 @@ pub use venta::*;
 
 use axum::{
     Router, middleware,
-    routing::{delete, get, post, put},
+    routing::{get, post, put},
 };
 
 use crate::{
     db::AppState,
     middleware::{
-        auth_middleware, require_bodega, require_bodega_o_gerente, require_jefe, require_vendedor,
+        auth_middleware, require_bodega, require_jefe, require_jefe_o_bodega, require_vendedor,
     },
 };
 
@@ -44,80 +44,85 @@ use crate::{
 // ============================================================================
 
 pub fn router(state: AppState) -> Router<AppState> {
-    // Rutas de Catálogos (Géneros, Motivos, Muebles, Autores, Proveedores)
-    let escritura = middleware::from_fn(require_bodega_o_gerente);
+    // Rutas de Catálogos. Permisos según docs/NovaBook-Diagrama-de-procesos-del-sistema.png
+    // ("Procesos de soporte · Catálogos"):
+    //   - Lectura: cualquier usuario autenticado.
+    //   - Autores, géneros, muebles y motivos: solo el Jefe escribe.
+    //   - Proveedores/editoriales: el Jefe tiene CRUD completo; Bodega solo puede
+    //     dar de alta uno nuevo al recibir la compra (paso 1). El Gerente no
+    //     administra catálogos (su proceso es Usuarios).
+    let solo_jefe = middleware::from_fn(require_jefe);
+    let alta_jefe_o_bodega = middleware::from_fn(require_jefe_o_bodega);
     let catalogos_routes = Router::new()
         .route(
             "/generos",
             get(genero::listar_generos_handler)
-                .merge(post(genero::crear_genero_handler).layer(escritura.clone())),
+                .merge(post(genero::crear_genero_handler).layer(solo_jefe.clone())),
         )
         .route(
             "/generos/{id}",
             put(genero::actualizar_genero_handler)
                 .delete(genero::eliminar_genero_handler)
-                .layer(escritura.clone()),
+                .layer(solo_jefe.clone()),
         )
         .route(
             "/motivos",
             get(motivo::listar_motivos_handler)
-                .merge(post(motivo::crear_motivo_handler).layer(escritura.clone())),
+                .merge(post(motivo::crear_motivo_handler).layer(solo_jefe.clone())),
         )
         .route(
             "/motivos/{id}",
             put(motivo::actualizar_motivo_handler)
                 .delete(motivo::eliminar_motivo_handler)
-                .layer(escritura.clone()),
-        )
-        .route(
-            "/editoriales",
-            get(editorial::listar_editoriales_handler)
-                .merge(post(editorial::crear_editorial_handler).layer(escritura.clone())),
-        )
-        .route(
-            "/editoriales/{id}",
-            put(editorial::actualizar_editorial_handler)
-                .delete(editorial::eliminar_editorial_handler)
-                .layer(escritura.clone()),
+                .layer(solo_jefe.clone()),
         )
         .route(
             "/muebles",
             get(mueble::listar_muebles_handler)
-                .merge(post(mueble::crear_mueble_handler).layer(escritura.clone())),
+                .merge(post(mueble::crear_mueble_handler).layer(solo_jefe.clone())),
         )
         .route(
             "/muebles/{id}",
             put(mueble::actualizar_mueble_handler)
                 .delete(mueble::eliminar_mueble_handler)
-                .layer(escritura),
+                .layer(solo_jefe.clone()),
         )
-        .route("/autores", get(autor::listar_autores_handler))
-        .route("/autores/{id}", get(autor::obtener_autor_handler))
         .route(
             "/autores",
-            post(autor::crear_autor_handler).layer(middleware::from_fn(require_bodega_o_gerente)),
+            get(autor::listar_autores_handler)
+                .merge(post(autor::crear_autor_handler).layer(solo_jefe.clone())),
         )
         .route(
             "/autores/{id}",
-            put(autor::actualizar_autor_handler).layer(middleware::from_fn(require_bodega_o_gerente)),
+            get(autor::obtener_autor_handler).merge(
+                put(autor::actualizar_autor_handler)
+                    .delete(autor::eliminar_autor_handler)
+                    .layer(solo_jefe.clone()),
+            ),
         )
         .route(
-            "/autores/{id}",
-            delete(autor::eliminar_autor_handler).layer(middleware::from_fn(require_bodega_o_gerente)),
+            "/editoriales",
+            get(editorial::listar_editoriales_handler)
+                .merge(post(editorial::crear_editorial_handler).layer(alta_jefe_o_bodega.clone())),
         )
-        .route("/proveedores", get(proveedor::listar_proveedores_handler))
-        .route("/proveedores/{id}", get(proveedor::obtener_proveedor_handler))
+        .route(
+            "/editoriales/{id}",
+            put(editorial::actualizar_editorial_handler)
+                .delete(editorial::eliminar_editorial_handler)
+                .layer(solo_jefe.clone()),
+        )
         .route(
             "/proveedores",
-            post(proveedor::crear_proveedor_handler).layer(middleware::from_fn(require_bodega_o_gerente)),
+            get(proveedor::listar_proveedores_handler)
+                .merge(post(proveedor::crear_proveedor_handler).layer(alta_jefe_o_bodega)),
         )
         .route(
             "/proveedores/{id}",
-            put(proveedor::actualizar_proveedor_handler).layer(middleware::from_fn(require_bodega_o_gerente)),
-        )
-        .route(
-            "/proveedores/{id}",
-            delete(proveedor::eliminar_proveedor_handler).layer(middleware::from_fn(require_bodega_o_gerente)),
+            get(proveedor::obtener_proveedor_handler).merge(
+                put(proveedor::actualizar_proveedor_handler)
+                    .delete(proveedor::eliminar_proveedor_handler)
+                    .layer(solo_jefe),
+            ),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -194,3 +199,4 @@ pub fn router(state: AppState) -> Router<AppState> {
         .nest("/api/vendedor", vendedor_routes)
         .nest("/api/jefe", jefe_routes)
 }
+
