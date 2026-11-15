@@ -11,6 +11,12 @@ pub struct ItemDevolucion {
     /// "Edición mensual · No. 452" de la revista.
     #[serde(default)]
     pub descripcion: Option<String>,
+    /// Costo unitario de la última compra del EAN (None si nunca se compró).
+    #[serde(default)]
+    pub costo_unitario: Option<f64>,
+    /// Precio de venta actual (productos.precio).
+    #[serde(default)]
+    pub precio_venta: Option<f64>,
     pub cantidad: i32,
     pub motivo: Option<String>,
 }

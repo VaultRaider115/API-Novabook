@@ -14,12 +14,15 @@ const ALTO: f32 = 792.0;
 const MARGEN: f32 = 50.0;
 const DERECHA: f32 = ANCHO - MARGEN;
 
-// Columnas de la tabla (diseño 21: EAN · TIPO · TÍTULO / DESCRIPCIÓN · CANT. · MOTIVO).
+// Columnas de la tabla (diseño 21: EAN · TIPO · TÍTULO / DESCRIPCIÓN · CANT. ·
+// MOTIVO), más costo y precio de venta que pide el diagrama (paso 8).
 const COL_EAN: f32 = MARGEN;
-const COL_TIPO: f32 = 150.0;
-const COL_TITULO: f32 = 205.0;
-const COL_CANT_DER: f32 = 425.0;
-const COL_MOTIVO: f32 = 435.0;
+const COL_TIPO: f32 = 132.0;
+const COL_TITULO: f32 = 174.0;
+const COL_CANT_DER: f32 = 352.0;
+const COL_COSTO_DER: f32 = 405.0;
+const COL_VENTA_DER: f32 = 460.0;
+const COL_MOTIVO: f32 = 472.0;
 const ALTO_FILA: f32 = 32.0;
 
 impl PdfService {
@@ -54,6 +57,8 @@ impl PdfService {
             doc.texto(COL_TIPO, y, Fuente::Negrita, 7.5, 0.35, "TIPO");
             doc.texto(COL_TITULO, y, Fuente::Negrita, 7.5, 0.35, "TÍTULO / DESCRIPCIÓN");
             doc.texto_der(COL_CANT_DER, y, Fuente::Negrita, 7.5, 0.35, "CANT.");
+            doc.texto_der(COL_COSTO_DER, y, Fuente::Negrita, 7.5, 0.35, "COSTO");
+            doc.texto_der(COL_VENTA_DER, y, Fuente::Negrita, 7.5, 0.35, "P. VENTA");
             doc.texto(COL_MOTIVO, y, Fuente::Negrita, 7.5, 0.35, "MOTIVO");
             doc.linea(MARGEN, y - 7.0, DERECHA, y - 7.0, 1.2, 0.1);
         };
@@ -70,7 +75,8 @@ impl PdfService {
             let base = y - 18.0;
             doc.texto(COL_EAN + 4.0, base, Fuente::Mono, 9.0, 0.1, &item.codigo_ean.to_string());
             doc.texto(COL_TIPO, base, Fuente::Normal, 9.0, 0.1, tipo);
-            doc.texto(COL_TITULO, base, Fuente::Negrita, 9.0, 0.1, &recortar(&item.titulo, 200.0, Fuente::Negrita, 9.0));
+            doc.texto(COL_TITULO, base, Fuente::Negrita, 9.0, 0.1,
+                      &recortar(&item.titulo, COL_CANT_DER - 28.0 - COL_TITULO, Fuente::Negrita, 9.0));
             // Autores o edición (diseño 21); si no hay, el SKU.
             let sub = item.descripcion.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(str::to_string)
                 .or_else(|| item.sku.map(|sku| format!("SKU {}", sku)));
@@ -79,6 +85,8 @@ impl PdfService {
                           &recortar(&sub, COL_CANT_DER - 30.0 - COL_TITULO, Fuente::Normal, 7.5));
             }
             doc.texto_der(COL_CANT_DER, base, Fuente::Normal, 9.0, 0.1, &item.cantidad.to_string());
+            doc.texto_der(COL_COSTO_DER, base, Fuente::Normal, 9.0, 0.1, &dinero_o_nd(item.costo_unitario));
+            doc.texto_der(COL_VENTA_DER, base, Fuente::Normal, 9.0, 0.1, &dinero_o_nd(item.precio_venta));
             let motivo = item.motivo.as_deref().unwrap_or("N/D");
             doc.texto(COL_MOTIVO, base, Fuente::Normal, 9.0, 0.1, &recortar(motivo, DERECHA - COL_MOTIVO, Fuente::Normal, 9.0));
             y -= ALTO_FILA;
@@ -89,6 +97,16 @@ impl PdfService {
         y -= 18.0;
         doc.texto_der(DERECHA, y, Fuente::Negrita, 9.5, 0.1,
                       &format!("Total de piezas a devolver: {}", devolucion.total_piezas));
+        // Importes (cantidad × precio); si a algún renglón le falta el costo, se avisa.
+        let importe = |f: fn(&crate::productos::model::ItemDevolucion) -> Option<f64>| {
+            devolucion.items.iter().map(|i| f(i).map(|p| p * i.cantidad as f64)).sum::<Option<f64>>()
+        };
+        y -= 13.0;
+        doc.texto_der(DERECHA, y, Fuente::Normal, 8.5, 0.35, &format!(
+            "Importe a costo: {} · a precio de venta: {}",
+            dinero_o_nd(importe(|i| i.costo_unitario)),
+            dinero_o_nd(importe(|i| i.precio_venta)),
+        ));
 
         y -= 70.0;
         let mitad = (MARGEN + DERECHA) / 2.0;
@@ -287,6 +305,22 @@ fn recortar(s: &str, max: f32, f: Fuente, tam: f32) -> String {
     format!("{}...", r.trim_end())
 }
 
+/// 4200.5 → "$4,200.50"; None → "N/D".
+fn dinero_o_nd(v: Option<f64>) -> String {
+    let Some(v) = v else { return "N/D".to_string() };
+    let centavos = (v * 100.0).round() as i64;
+    let (signo, centavos) = if centavos < 0 { ("-", -centavos) } else { ("", centavos) };
+    let enteros = (centavos / 100).to_string();
+    let mut miles = String::new();
+    for (i, c) in enteros.chars().enumerate() {
+        if i > 0 && (enteros.len() - i) % 3 == 0 {
+            miles.push(',');
+        }
+        miles.push(c);
+    }
+    format!("{}${}.{:02}", signo, miles, centavos % 100)
+}
+
 /// "2026-10-14" → "14 de octubre de 2026"
 fn fecha_larga(iso: &str) -> String {
     const MESES: [&str; 12] = [
@@ -332,6 +366,8 @@ mod tests {
                     sku: Some(884102),
                     titulo: "Orgullo y prejuicio (edición de colección)".into(),
                     descripcion: Some("Jane Austen".into()),
+                    costo_unitario: Some(210.0),
+                    precio_venta: Some(350.0),
                     cantidad: 1,
                     motivo: Some("Defecto de Imprenta".into()),
                 })
@@ -383,6 +419,14 @@ mod tests {
         // La acentuada mide lo mismo que su base.
         assert_eq!(ancho("Devolución", Fuente::Normal, 9.0), ancho("Devolucion", Fuente::Normal, 9.0));
         assert_eq!(ancho("9786073832014", Fuente::Mono, 10.0), 78.0);
+    }
+
+    #[test]
+    fn formato_de_dinero() {
+        assert_eq!(dinero_o_nd(Some(4200.5)), "$4,200.50");
+        assert_eq!(dinero_o_nd(Some(99.999)), "$100.00");
+        assert_eq!(dinero_o_nd(Some(1234567.0)), "$1,234,567.00");
+        assert_eq!(dinero_o_nd(None), "N/D");
     }
 
     #[test]

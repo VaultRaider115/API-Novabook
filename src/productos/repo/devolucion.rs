@@ -82,7 +82,13 @@ async fn cargar_items(
                ELSE NULLIF(CONCAT_WS(' · ',
                         CONCAT('Edición ', LOWER(NULLIF(TRIM(r.periodicidad), ''))),
                         CONCAT('No. ', r.numero_edicion)), '')
-               END AS descripcion
+               END AS descripcion,
+               CAST(p.precio AS DOUBLE) AS precio_venta,
+               (SELECT CAST(dc.subtotal / dc.cantidad AS DOUBLE)
+                FROM detalles_compras dc
+                JOIN compras_proveedor c ON c.id_compras_proveedor = dc.id_compras_proveedor
+                WHERE dc.codigo_ean = dd.codigo_ean AND dc.cantidad > 0
+                ORDER BY c.fecha_hora DESC, dc.id_detalles_c DESC LIMIT 1) AS costo_unitario
         FROM detalle_devolucion dd
         JOIN productos p ON p.codigo_ean = dd.codigo_ean
         LEFT JOIN libros l ON l.codigo_ean = dd.codigo_ean
@@ -112,6 +118,8 @@ async fn cargar_items(
                 sku: row_get_opt_i64(&row, "sku"),
                 titulo: row.get("titulo"),
                 descripcion: row.try_get("descripcion").ok().flatten(),
+                costo_unitario: row.try_get::<Option<f64>, _>("costo_unitario").ok().flatten(),
+                precio_venta: row.try_get::<Option<f64>, _>("precio_venta").ok().flatten(),
                 cantidad: row_get_i32(&row, "cantidad"),
                 motivo: row.get("motivo"),
             }
