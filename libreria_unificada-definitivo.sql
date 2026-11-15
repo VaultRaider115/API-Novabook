@@ -30,6 +30,9 @@ PREPARE stmt FROM @drop_view_proveedor;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+DROP TABLE IF EXISTS `detalle_devolucion_cliente`;
+DROP TABLE IF EXISTS `devolucion_cliente`;
+DROP TABLE IF EXISTS `apartados`;
 DROP TABLE IF EXISTS `detalle_devolucion`;
 DROP TABLE IF EXISTS `devolucion`;
 DROP TABLE IF EXISTS `motivo`;
@@ -509,6 +512,50 @@ CREATE TABLE `detalle_ventas` (
   KEY `FK_DV_PRODUCTO` (`codigo_ean`),
   CONSTRAINT `FK_DV_VENTA`    FOREIGN KEY (`id_ventas`)  REFERENCES `ventas` (`id_ventas`) ON DELETE CASCADE,
   CONSTRAINT `FK_DV_PRODUCTO` FOREIGN KEY (`codigo_ean`) REFERENCES `productos` (`codigo_ean`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---- devolución de cliente con ticket (diagrama, paso 5) -------------------
+CREATE TABLE `apartados` (
+  `codigo_ean` BIGINT NOT NULL,
+  `cantidad`   INT    NOT NULL DEFAULT 0,
+  PRIMARY KEY (`codigo_ean`),
+  CONSTRAINT `FK_APARTADOS_PRODUCTO` FOREIGN KEY (`codigo_ean`) REFERENCES `productos` (`codigo_ean`),
+  CONSTRAINT `CK_APARTADOS_CANTIDAD` CHECK (`cantidad` >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `devolucion_cliente` (
+  `id_devolucion_cliente` BIGINT        NOT NULL AUTO_INCREMENT,
+  `id_ventas`             BIGINT        NOT NULL,              -- ticket original
+  `id_usuarios`           BIGINT        NOT NULL,              -- quien la registró
+  `fecha_hora`            DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `resolucion`            VARCHAR(10)   NOT NULL,              -- REEMBOLSO | CAMBIO
+  `total_devuelto`        DECIMAL(10,2) NOT NULL,              -- a precio pagado en el ticket
+  `id_venta_cambio`       BIGINT        DEFAULT NULL,          -- venta nueva si fue CAMBIO
+  `diferencia_cobrada`    DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  `observaciones`         VARCHAR(200)  DEFAULT NULL,
+  PRIMARY KEY (`id_devolucion_cliente`),
+  KEY `FK_DC_VENTA` (`id_ventas`),
+  KEY `FK_DC_USUARIO` (`id_usuarios`),
+  KEY `FK_DC_VENTA_CAMBIO` (`id_venta_cambio`),
+  CONSTRAINT `FK_DC_VENTA`        FOREIGN KEY (`id_ventas`)       REFERENCES `ventas` (`id_ventas`),
+  CONSTRAINT `FK_DC_USUARIO`      FOREIGN KEY (`id_usuarios`)     REFERENCES `usuarios` (`id_usuarios`),
+  CONSTRAINT `FK_DC_VENTA_CAMBIO` FOREIGN KEY (`id_venta_cambio`) REFERENCES `ventas` (`id_ventas`),
+  CONSTRAINT `CK_DC_RESOLUCION`   CHECK (`resolucion` IN ('REEMBOLSO', 'CAMBIO'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `detalle_devolucion_cliente` (
+  `id_detalle`            BIGINT        NOT NULL AUTO_INCREMENT,
+  `id_devolucion_cliente` BIGINT        NOT NULL,
+  `codigo_ean`            BIGINT        NOT NULL,
+  `cantidad`              INT           NOT NULL,
+  `precio_unitario`       DECIMAL(10,2) NOT NULL,               -- precio pagado en el ticket
+  `con_defecto`           BOOLEAN       NOT NULL DEFAULT 0,     -- 1 → apartados; 0 → piso
+  PRIMARY KEY (`id_detalle`),
+  KEY `FK_DDC_DEVOLUCION` (`id_devolucion_cliente`),
+  KEY `FK_DDC_PRODUCTO` (`codigo_ean`),
+  CONSTRAINT `FK_DDC_DEVOLUCION` FOREIGN KEY (`id_devolucion_cliente`) REFERENCES `devolucion_cliente` (`id_devolucion_cliente`) ON DELETE CASCADE,
+  CONSTRAINT `FK_DDC_PRODUCTO`   FOREIGN KEY (`codigo_ean`) REFERENCES `productos` (`codigo_ean`),
+  CONSTRAINT `CK_DDC_CANTIDAD`   CHECK (`cantidad` > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Ventas de ejemplo (seeds.sql): clientes con N libros y N revistas
