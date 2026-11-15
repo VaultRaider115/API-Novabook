@@ -160,6 +160,8 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
 
 - **EAN-13** con dígito verificador: libros 978/979, revistas 977. **SKU** de
   6 a 7 dígitos (100000–9999999), obligatorio en el alta y sin repetirse.
+  El alta es solo para EAN nuevos: si el EAN ya existe responde 409 ("ya
+  está registrado como …; para agregar piezas usa Compras a Proveedor").
 - **Compra**: una sola editorial (proveedor) por factura; costo no
   negativo, factura de hasta 30 caracteres; las piezas entran a un mueble de
   bodega. `detalles_compras` guarda solo el subtotal: el costo unitario es

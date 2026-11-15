@@ -8,6 +8,8 @@ Rama `integracion-validaciones`: migración al esquema unificado
 (`libreria_unificada-definitivo.sql`) y reglas del diagrama de procesos.
 
 ### Added
+- El alta de libros y revistas rechaza un EAN ya registrado (antes
+  sobrescribía título, precio, SKU y autores); las piezas entran por Compras.
 - **Compra incompleta** (diagrama, paso 1):
   - Cada partida acepta `cantidad_facturada`; si llegó menos, se abre una
     incidencia y la respuesta trae el borrador del correo al proveedor.

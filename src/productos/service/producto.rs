@@ -12,21 +12,33 @@ use crate::{
 
 pub struct ProductoService;
 
-/// SKU de 6 a 7 dígitos, obligatorio para un producto nuevo (si el EAN ya existe
-/// puede omitirse y se conserva el actual) y sin repetirse entre productos.
+/// Diagrama, paso 1: el alta es solo para productos nuevos. Si el EAN ya
+/// existe, las piezas entran por Compras a Proveedor (no se sobrescribe el
+/// título, precio ni SKU del producto registrado).
+async fn validar_ean_nuevo(pool: &DbPool, ean: i64) -> Result<(), AppError> {
+    let fila = sqlx::query(
+        "SELECT COALESCE(l.nombre_libro, r.nombre_revista, '') AS titulo FROM productos p          LEFT JOIN libros l ON l.codigo_ean = p.codigo_ean          LEFT JOIN revistas r ON r.codigo_ean = p.codigo_ean WHERE p.codigo_ean = ?",
+    )
+    .bind(ean)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?;
+    if let Some(f) = fila {
+        let titulo: String = sqlx::Row::get(&f, "titulo");
+        return Err(AppError::Conflict(format!(
+            "El EAN {} ya está registrado como \"{}\"; para agregar piezas usa Compras a Proveedor",
+            ean, titulo
+        )));
+    }
+    Ok(())
+}
+
+/// SKU de 6 a 7 dígitos, obligatorio en el alta y sin repetirse entre productos.
 async fn validar_sku_producto(pool: &DbPool, ean: i64, sku: Option<i64>) -> Result<(), AppError> {
     let Some(sku) = sku else {
-        let existe = sqlx::query("SELECT 1 FROM productos WHERE codigo_ean = ?")
-            .bind(ean)
-            .fetch_optional(pool)
-            .await
-            .map_err(AppError::Database)?;
-        if existe.is_none() {
-            return Err(AppError::BadRequest(
-                "El SKU es obligatorio para dar de alta un producto nuevo".to_string(),
-            ));
-        }
-        return Ok(());
+        return Err(AppError::BadRequest(
+            "El SKU es obligatorio para dar de alta un producto nuevo".to_string(),
+        ));
     };
     validar_sku(sku).map_err(AppError::BadRequest)?;
 
@@ -74,6 +86,7 @@ impl ProductoService {
                 req.codigo_ean
             )));
         }
+        validar_ean_nuevo(pool, req.codigo_ean).await?;
         validar_sku_producto(pool, req.codigo_ean, req.sku).await?;
 
         if req.cantidad < 0 {
@@ -127,6 +140,7 @@ impl ProductoService {
                 req.codigo_ean
             )));
         }
+        validar_ean_nuevo(pool, req.codigo_ean).await?;
         validar_sku_producto(pool, req.codigo_ean, req.sku).await?;
 
         if req.cantidad < 0 {

@@ -134,19 +134,20 @@ else
   echo "Error: Aceptó revista como libro: $BAD_TIPO_RES"; exit 1
 fi
 
-# Registrar Libro Válido con múltiples géneros y autor seleccionado
-REG_LIBRO_RES=$(curl -s -X POST "$BASE_URL/bodega/libros" \
-  -H "Authorization: Bearer $TOKEN_BODEGA" \
-  -H "Content-Type: application/json" \
-  -d '{"codigo_ean": 9786073832014, "sku": 100001, "nombre_libro": "Cien Años de Soledad", "id_proveedor": 1, "generos": [15, 16], "autores": [2], "precio": 350.00, "cantidad": 15, "id_mueble": 11}')
-echo "  ✓ Libro registrado con múltiples géneros (15, 16) y autor ID 2"
+# Un EAN ya registrado no se vuelve a dar de alta (las piezas entran por Compras)
+DUP_RES=$(curl -s -X POST "$BASE_URL/bodega/libros"   -H "Authorization: Bearer $TOKEN_BODEGA"   -H "Content-Type: application/json"   -d '{"codigo_ean": 9786073832014, "sku": 555555, "nombre_libro": "Otro Titulo", "id_proveedor": 1, "generos": [16], "autores": [2], "precio": 1.00, "cantidad": 0, "id_mueble": 111}')
+echo "$DUP_RES" | grep -q 'ya está registrado' || { echo "Error: se aceptó un EAN repetido en el alta: $DUP_RES"; exit 1; }
+echo "  ✓ El alta rechaza un EAN ya registrado"
 
-# Registrar Revista Válida con múltiples géneros
-REG_REV_RES=$(curl -s -X POST "$BASE_URL/bodega/revistas" \
-  -H "Authorization: Bearer $TOKEN_BODEGA" \
-  -H "Content-Type: application/json" \
-  -d '{"codigo_ean": 9771234567010, "sku": 200001, "nombre_revista": "National Geographic Mar 2026", "id_proveedor": 2, "numero_edicion": 345, "periodicidad": "Mensual", "generos": [15, 18], "precio": 120.00, "cantidad": 15, "id_mueble": 11}')
-echo "  ✓ Revista registrada con múltiples géneros (15, 18)"
+# Registrar un libro nuevo con varios géneros y autor
+REG_LIBRO_RES=$(curl -s -X POST "$BASE_URL/bodega/libros"   -H "Authorization: Bearer $TOKEN_BODEGA"   -H "Content-Type: application/json"   -d '{"codigo_ean": 9786071234568, "sku": 555555, "nombre_libro": "Pedro Paramo", "id_proveedor": 1, "generos": [15, 16], "autores": [2], "precio": 280.00, "cantidad": 0, "id_mueble": 111}')
+echo "$REG_LIBRO_RES" | grep -q '"success":true' || { echo "Error registrando libro nuevo: $REG_LIBRO_RES"; exit 1; }
+echo "  ✓ Libro nuevo registrado con géneros (15, 16) y autor ID 2"
+
+# Registrar una revista nueva con varios géneros
+REG_REV_RES=$(curl -s -X POST "$BASE_URL/bodega/revistas"   -H "Authorization: Bearer $TOKEN_BODEGA"   -H "Content-Type: application/json"   -d '{"codigo_ean": 9771234567027, "sku": 200002, "nombre_revista": "National Geographic Abr 2026", "id_proveedor": 2, "id_editorial": 1, "numero_edicion": 346, "periodicidad": "Mensual", "generos": [15, 18], "precio": 120.00, "cantidad": 0, "id_mueble": 111}')
+echo "$REG_REV_RES" | grep -q '"success":true' || { echo "Error registrando revista nueva: $REG_REV_RES"; exit 1; }
+echo "  ✓ Revista nueva registrada con géneros (15, 18)"
 
 # -----------------------------------------------------------------------------
 # 5. REGISTRO DE COMPRAS A PROVEEDOR (BODEGA)
