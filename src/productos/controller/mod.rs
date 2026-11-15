@@ -156,6 +156,8 @@ pub fn router(state: AppState) -> Router<AppState> {
             post(movimiento::movimiento_tienda_bodega_revistas),
         )
         .route("/requisiciones", post(movimiento::requisicion_entrada_vendedor))
+        .route("/tickets/{id}", get(devolucion::consultar_ticket_vendedor))
+        .route("/devoluciones-cliente", post(devolucion::registrar_devolucion_cliente_vendedor))
         .route(
             "/devoluciones",
             post(devolucion::crear_devolucion_vendedor)

@@ -11,10 +11,10 @@ use crate::{
     error::{ApiResponse, AppError},
     productos::{
         model::{
-            AprobarDevolucionRequest, CrearDevolucionRequest, Devolucion, HistorialDevolucionQuery,
-            TipoProducto,
+            AprobarDevolucionRequest, CrearDevolucionClienteRequest, CrearDevolucionRequest, Devolucion,
+            DevolucionClienteResponse, HistorialDevolucionQuery, TicketResponse, TipoProducto,
         },
-        service::DevolucionService,
+        service::{DevolucionClienteService, DevolucionService},
     },
     usuarios::model::Claims,
 };
@@ -126,4 +126,33 @@ pub async fn aprobar_devolucion_jefe(
         res,
         "Devolución evaluada exitosamente",
     )))
+}
+
+// ----------------------------------------------------------------------------
+// Devolución de cliente con ticket (Vendedor; diagrama de procesos, paso 5)
+// ----------------------------------------------------------------------------
+
+/// Consulta un ticket: lo vendido, lo ya devuelto y si sigue dentro de 15 días.
+pub async fn consultar_ticket_vendedor(
+    State(state): State<AppState>,
+    Extension(_claims): Extension<Claims>,
+    Path(id): Path<i64>,
+) -> Result<Json<ApiResponse<TicketResponse>>, AppError> {
+    let res = DevolucionClienteService::consultar_ticket(&state.pool, id).await?;
+    Ok(Json(ApiResponse::success(res)))
+}
+
+/// Registra la devolución (reembolso o cambio) en una sola transacción.
+pub async fn registrar_devolucion_cliente_vendedor(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(payload): Json<CrearDevolucionClienteRequest>,
+) -> Result<Json<ApiResponse<DevolucionClienteResponse>>, AppError> {
+    let res = DevolucionClienteService::registrar(&state.pool, claims.id_usuario, payload).await?;
+    let msg = if res.id_venta_cambio.is_some() {
+        "Cambio registrado"
+    } else {
+        "Devolución registrada; reembolsar al cliente"
+    };
+    Ok(Json(ApiResponse::success_msg(res, msg)))
 }

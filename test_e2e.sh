@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
-BASE_URL="http://127.0.0.1:3000/api"
+# Puerto por defecto de la API (SERVER_PORT=8080); se puede cambiar con BASE_URL=...
+# En Windows usa el curl de C:\Windows\System32: el de Git Bash manda los acentos
+# en ANSI y la API rechaza el JSON (p. ej. PATH=/c/WINDOWS/system32:$PATH bash test_e2e.sh).
+BASE_URL="${BASE_URL:-http://127.0.0.1:8080/api}"
 echo "=== INICIANDO PRUEBAS E2E NOVABOOK V2 ==="
 
 # -----------------------------------------------------------------------------
@@ -152,7 +155,7 @@ echo "[5/8] Probando registro de Compras a Proveedor..."
 COMPRA_RES=$(curl -s -X POST "$BASE_URL/bodega/compras" \
   -H "Authorization: Bearer $TOKEN_BODEGA" \
   -H "Content-Type: application/json" \
-  -d '{"id_proveedor": 1, "observaciones": "Lote mensual facturado", "items": [{"codigo_ean": 9786073832014, "tipo_producto": "libro", "cantidad": 10, "costo_unitario": 210.00}, {"codigo_ean": 9771234567010, "tipo_producto": "revista", "cantidad": 8, "costo_unitario": 75.00}]}')
+  -d '{"id_proveedor": 1, "observaciones": "Lote mensual facturado", "items": [{"codigo_ean": 9786073832014, "tipo_producto": "libro", "cantidad": 10, "costo_unitario": 210.00}, {"codigo_ean": 9788497776639, "tipo_producto": "libro", "cantidad": 8, "costo_unitario": 120.00}]}')
 if echo "$COMPRA_RES" | grep -q '"success":true'; then
   COMPRA_ID=$(echo "$COMPRA_RES" | grep -o '"id_compra":[0-9]*' | cut -d':' -f2)
   echo "  ✓ Compra registrada exitosamente con ID: $COMPRA_ID e inventario incrementado en bodega"
@@ -216,6 +219,20 @@ if echo "$VENTA_OK" | grep -q '"success":true'; then
   echo "  ✓ Venta registrada con cliente 'Ing. Fernando Peña'"
 else
   echo "Error registrando venta: $VENTA_OK"; exit 1
+fi
+
+# Devolución de cliente (ticket #2 de los seeds: 1 'Un Himno a la Vida')
+DC_OK=$(curl -s -X POST "$BASE_URL/vendedor/devoluciones-cliente" -H "Authorization: Bearer $TOKEN_VENDEDOR"   -H "Content-Type: application/json" -d '{"id_venta": 2, "resolucion": "REEMBOLSO", "items": [{"codigo_ean": 9786073868723, "cantidad": 1}]}')
+if echo "$DC_OK" | grep -q '"reembolso":299'; then
+  echo "  ✓ Devolución de cliente con reembolso al precio del ticket"
+else
+  echo "Error en devolución de cliente: $DC_OK"; exit 1
+fi
+DC_MAS=$(curl -s -X POST "$BASE_URL/vendedor/devoluciones-cliente" -H "Authorization: Bearer $TOKEN_VENDEDOR"   -H "Content-Type: application/json" -d '{"id_venta": 2, "resolucion": "REEMBOLSO", "items": [{"codigo_ean": 9786073868723, "cantidad": 1}]}')
+if echo "$DC_MAS" | grep -q '"success":false'; then
+  echo "  ✓ No se puede devolver más de lo vendido en el ticket"
+else
+  echo "Error: se devolvió más de lo vendido: $DC_MAS"; exit 1
 fi
 
 # -----------------------------------------------------------------------------

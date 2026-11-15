@@ -3,6 +3,7 @@ use sqlx::{MySql, MySqlPool, QueryBuilder, Row};
 use crate::{
     db::{DbPool, row_get_i32, row_get_i64, row_get_opt_i64},
     error::AppError,
+    productos::repo::stock,
     productos::model::{
         Devolucion, HistorialDevolucionQuery, ItemDevolucion, ItemDevolucionRequest, TipoProducto,
     },
@@ -191,12 +192,15 @@ impl DevolucionRepo {
                 )));
             }
 
-            // La mercancía a devolver debe existir en bodega (la baja real ocurre al aprobar)
+            // La mercancía a devolver debe existir en bodega o en apartados
+            // (libros con defecto de clientes); la baja real ocurre al aprobar.
             let en_bodega: i64 = sqlx::query(
-                "SELECT COALESCE(SUM(e.cantidad), 0) AS t FROM existencias e \
-                 JOIN mueble m ON m.id_mueble = e.id_mueble \
-                 WHERE e.codigo_ean = ? AND m.id_ubicacion = 2",
+                "SELECT COALESCE((SELECT SUM(e.cantidad) FROM existencias e \
+                   JOIN mueble m ON m.id_mueble = e.id_mueble \
+                   WHERE e.codigo_ean = ? AND m.id_ubicacion = 2), 0) \
+                 + COALESCE((SELECT a.cantidad FROM apartados a WHERE a.codigo_ean = ?), 0) AS t",
             )
+            .bind(item.codigo_ean)
             .bind(item.codigo_ean)
             .fetch_one(&mut *tx)
             .await
@@ -209,7 +213,7 @@ impl DevolucionRepo {
                 .sum();
             if en_bodega < solicitado as i64 {
                 return Err(AppError::BadRequest(format!(
-                    "Stock insuficiente en bodega para EAN {}. Disponible: {}, solicitado: {}",
+                    "Stock insuficiente en bodega y apartados para EAN {}. Disponible: {}, solicitado: {}",
                     item.codigo_ean, en_bodega, solicitado
                 )));
             }
@@ -352,6 +356,12 @@ impl DevolucionRepo {
             for detalle in detalles {
                 let codigo_ean = row_get_i64(&detalle, "codigo_ean");
                 let mut restante = row_get_i32(&detalle, "cantidad");
+                // Diagrama, paso 8: primero salen los apartados (libros con defecto
+                // de clientes, que no se pueden vender) y el resto de bodega.
+                restante -= stock::descontar_apartado(&mut tx, codigo_ean, restante).await?;
+                if restante == 0 {
+                    continue;
+                }
                 let existencias = sqlx::query(
                     r#"
                     SELECT e.id_mueble, e.cantidad

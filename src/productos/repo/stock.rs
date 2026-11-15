@@ -115,3 +115,46 @@ pub async fn elegir_mueble(
         ))
     })
 }
+
+// ----------------------------------------------------------------------------
+// Stock "Apartado": libros con defecto que regresó un cliente (tabla apartados).
+// No se venden ni se trasladan; solo salen al devolverlos a la editorial.
+// ----------------------------------------------------------------------------
+
+/// Piezas apartadas de un producto, bloqueando la fila para la transacción.
+pub async fn apartado_bloqueado(tx: &mut Tx<'_>, codigo_ean: i64) -> Result<i32, AppError> {
+    let fila = sqlx::query("SELECT cantidad FROM apartados WHERE codigo_ean = ? FOR UPDATE")
+        .bind(codigo_ean)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(AppError::Database)?;
+    Ok(fila.map(|r| crate::db::row_get_i32(&r, "cantidad")).unwrap_or(0))
+}
+
+pub async fn sumar_apartado(tx: &mut Tx<'_>, codigo_ean: i64, cantidad: i32) -> Result<(), AppError> {
+    sqlx::query(
+        "INSERT INTO apartados (codigo_ean, cantidad) VALUES (?, ?) \
+         ON DUPLICATE KEY UPDATE cantidad = cantidad + VALUES(cantidad)",
+    )
+    .bind(codigo_ean)
+    .bind(cantidad)
+    .execute(&mut **tx)
+    .await
+    .map_err(AppError::Database)?;
+    Ok(())
+}
+
+/// Descuenta hasta `cantidad` piezas apartadas y devuelve cuántas descontó.
+pub async fn descontar_apartado(tx: &mut Tx<'_>, codigo_ean: i64, cantidad: i32) -> Result<i32, AppError> {
+    let hay = apartado_bloqueado(tx, codigo_ean).await?;
+    let quitar = hay.min(cantidad).max(0);
+    if quitar > 0 {
+        sqlx::query("UPDATE apartados SET cantidad = cantidad - ? WHERE codigo_ean = ?")
+            .bind(quitar)
+            .bind(codigo_ean)
+            .execute(&mut **tx)
+            .await
+            .map_err(AppError::Database)?;
+    }
+    Ok(quitar)
+}

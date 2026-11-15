@@ -5,7 +5,7 @@ use crate::{
     error::AppError,
     productos::{
         model::{ItemVenta, RegistrarVentaRequest, TipoProducto, VentaResponse},
-        repo::{UBICACION_TIENDA, stock},
+        repo::{UBICACION_TIENDA, stock::{self, Tx}},
     },
 };
 
@@ -18,7 +18,18 @@ impl VentaRepo {
         req: &RegistrarVentaRequest,
     ) -> Result<VentaResponse, AppError> {
         let mut tx = pool.begin().await.map_err(AppError::Database)?;
+        let venta = Self::registrar_en_tx(&mut tx, actor_id, req).await?;
+        tx.commit().await.map_err(AppError::Database)?;
+        Ok(venta)
+    }
 
+    /// Registra la venta dentro de una transacción ya abierta (la usa también el
+    /// cambio de una devolución de cliente, que debe ser todo o nada).
+    pub async fn registrar_en_tx(
+        tx: &mut Tx<'_>,
+        actor_id: i64,
+        req: &RegistrarVentaRequest,
+    ) -> Result<VentaResponse, AppError> {
         let nombre_cli = if req.cliente.trim().is_empty() {
             "Público en General"
         } else {
@@ -33,7 +44,7 @@ impl VentaRepo {
         .bind(nombre_cli)
         .bind(&req.factura)
         .bind(&metodo_pago)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await
         .map_err(AppError::Database)?;
 
@@ -55,7 +66,7 @@ impl VentaRepo {
                  WHERE p.codigo_ean = ?",
             )
             .bind(item.codigo_ean)
-            .fetch_optional(&mut *tx)
+            .fetch_optional(&mut **tx)
             .await
             .map_err(AppError::Database)?
             .ok_or_else(|| AppError::NotFound(format!("El producto con EAN {} no existe", item.codigo_ean)))?;
@@ -65,14 +76,14 @@ impl VentaRepo {
             let tipo_str: String = row.get("tipo_producto");
             let tipo = if tipo_str.eq_ignore_ascii_case("revista") { TipoProducto::Revista } else { TipoProducto::Libro };
 
-            let disponible = stock::stock_bloqueado(&mut tx, item.codigo_ean, UBICACION_TIENDA).await?;
+            let disponible = stock::stock_bloqueado(tx, item.codigo_ean, UBICACION_TIENDA).await?;
             if disponible < item.cantidad {
                 return Err(AppError::BadRequest(format!(
                     "Stock insuficiente en tienda para '{}'. Disponible: {}, Solicitado: {}",
                     nombre, disponible, item.cantidad
                 )));
             }
-            stock::descontar(&mut tx, item.codigo_ean, UBICACION_TIENDA, item.cantidad).await?;
+            stock::descontar(tx, item.codigo_ean, UBICACION_TIENDA, item.cantidad).await?;
 
             let subtotal = precio * (item.cantidad as f64);
             total_venta += subtotal;
@@ -86,7 +97,7 @@ impl VentaRepo {
             .bind(item.cantidad)
             .bind(precio)
             .bind(subtotal)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await
             .map_err(AppError::Database)?;
 
@@ -103,18 +114,16 @@ impl VentaRepo {
         sqlx::query("UPDATE ventas SET total = ? WHERE id_ventas = ?")
             .bind(total_venta)
             .bind(id_venta)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await
             .map_err(AppError::Database)?;
 
         let fecha: String = sqlx::query("SELECT DATE_FORMAT(fecha_hora, '%Y-%m-%d %H:%i:%s') AS f FROM ventas WHERE id_ventas = ?")
             .bind(id_venta)
-            .fetch_one(&mut *tx)
+            .fetch_one(&mut **tx)
             .await
             .map_err(AppError::Database)?
             .get("f");
-
-        tx.commit().await.map_err(AppError::Database)?;
 
         Ok(VentaResponse {
             id_venta,
