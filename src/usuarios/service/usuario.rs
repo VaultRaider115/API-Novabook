@@ -148,7 +148,7 @@ impl UsuarioService {
             usuario.id_usuarios,
             2,
             "INICIO DE SESIÓN",
-            &format!("Inicio de sesión exitoso con rol: {}", rol_enum.as_str()),
+            "Inicio de sesión exitoso", // el rol ya se muestra en su propia columna
         )
         .await
         {

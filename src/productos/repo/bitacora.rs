@@ -17,7 +17,7 @@ const CATEGORIA_SQL: &str = "CASE \
     WHEN UPPER(b.accion) LIKE '%DEVOLUC%' THEN 'DEVOLUCION' \
     WHEN UPPER(b.accion) LIKE '%USUARIO%' THEN 'USUARIOS' \
     WHEN UPPER(b.accion) LIKE 'REGISTRO %' OR UPPER(b.accion) LIKE '%LIBRO%' OR UPPER(b.accion) LIKE '%REVISTA%' OR UPPER(b.accion) LIKE '%PRODUCTO%' THEN 'INVENTARIO' \
-    WHEN UPPER(b.accion) LIKE 'CREAR %' OR UPPER(b.accion) LIKE 'ACTUALIZAR %' OR UPPER(b.accion) LIKE 'ELIMINAR %' THEN 'CATALOGO' \
+    WHEN UPPER(b.accion) LIKE 'CREAR%' OR UPPER(b.accion) LIKE 'ACTUALIZAR%' OR UPPER(b.accion) LIKE 'ELIMINAR%' THEN 'CATALOGO' \
     ELSE 'SISTEMA' END";
 
 fn fecha_valida(s: &str) -> bool {

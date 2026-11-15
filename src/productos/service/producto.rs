@@ -95,8 +95,8 @@ impl ProductoService {
             actor_id,
             "REGISTRO LIBRO BODEGA",
             &format!(
-                "EAN: {}, Título: '{}', Cant: {}",
-                req.codigo_ean, req.nombre_libro, req.cantidad
+                "Alta de libro '{}' con EAN {} ({} pza(s) en bodega)",
+                req.nombre_libro, req.codigo_ean, req.cantidad
             ),
         )
         .await;
@@ -148,8 +148,11 @@ impl ProductoService {
             actor_id,
             "REGISTRO REVISTA BODEGA",
             &format!(
-                "EAN: {}, Título: '{}', Edición: {:?}, Cant: {}",
-                req.codigo_ean, req.nombre_revista, req.numero_edicion, req.cantidad
+                "Alta de revista '{}'{} con EAN {} ({} pza(s) en bodega)",
+                req.nombre_revista,
+                req.numero_edicion.map(|n| format!(" Ed. {}", n)).unwrap_or_default(),
+                req.codigo_ean,
+                req.cantidad
             ),
         )
         .await;

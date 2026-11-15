@@ -14,6 +14,9 @@ use crate::{
 
 pub struct DevolucionService;
 
+/// Máximo de las observaciones de aprobación/rechazo (caben en bitacora.detalle).
+const MAX_OBSERVACIONES: usize = 200;
+
 /// Máximo de piezas por hoja/lote de devolución a proveedor.
 pub const LIMITE_PIEZAS_DEVOLUCION: i32 = 60;
 
@@ -68,8 +71,10 @@ impl DevolucionService {
             actor_id,
             "CREAR DEVOLUCIÓN",
             &format!(
-                "Devolución #{} creada. Proveedor ID: {}, Piezas: {}",
-                id_devolucion, req.id_proveedor, devolucion.total_piezas
+                "Solicitud de devolución #{} a {} · {} pza(s)",
+                devolucion.folio,
+                devolucion.nombre_proveedor.as_deref().unwrap_or("proveedor"),
+                devolucion.total_piezas
             ),
         )
         .await;
@@ -155,6 +160,12 @@ impl DevolucionService {
                 "Debes indicar las observaciones del rechazo".to_string(),
             ));
         }
+        // Las observaciones viven en bitacora.detalle (VARCHAR(255)) junto con el folio.
+        if notas.is_some_and(|n| n.chars().count() > MAX_OBSERVACIONES) {
+            return Err(AppError::BadRequest(format!(
+                "Las observaciones no pueden exceder {} caracteres", MAX_OBSERVACIONES
+            )));
+        }
 
         let nuevo_estado = if req.aprobar {
             "APROBADO"
@@ -180,14 +191,16 @@ impl DevolucionService {
             pool,
             actor_id,
             if req.aprobar { "APROBAR DEVOLUCIÓN" } else { "RECHAZAR DEVOLUCIÓN" },
+            // Ojo: DEVOLUCION_SELECT extrae el motivo con el patrón
+            // "#<id> …Observaciones: <texto>"; mantenerlo si se cambia este texto.
             &match notas {
                 Some(n) => format!(
-                    "Devolución #{} actualizada a estado '{}'. Observaciones: {}",
-                    id_devolucion, nuevo_estado, n
+                    "Devolución #{} {}. Observaciones: {}",
+                    id_devolucion, if req.aprobar { "aprobada" } else { "rechazada" }, n
                 ),
                 None => format!(
-                    "Devolución #{} actualizada a estado '{}'",
-                    id_devolucion, nuevo_estado
+                    "Devolución #{} {}",
+                    id_devolucion, if req.aprobar { "aprobada" } else { "rechazada" }
                 ),
             },
         )

@@ -68,7 +68,13 @@ impl MovimientoService {
             pool,
             actor_id,
             accion,
-            &format!("{}: {} partida(s), {} pieza(s)", reg.folio, reg.items.len(), total_piezas),
+            &format!(
+                "Requisición {} {}: {} unidades en {} partida(s)",
+                reg.folio,
+                if origen == UBICACION_BODEGA { "Bodega-Piso" } else { "Piso-Bodega" },
+                total_piezas,
+                reg.items.len()
+            ),
         )
         .await;
 
@@ -111,7 +117,7 @@ impl MovimientoService {
             actor_id,
             "TRASLADO BODEGA A TIENDA (LIBROS)",
             &format!(
-                "EAN: {}, Cantidad: {}. Bodega restan: {}, Tienda: {}",
+                "Traslado Bodega-Piso {1} unidades de EAN {0} (quedan {2} en bodega, {3} en piso)",
                 req.codigo_ean, req.cantidad, restante_bodega, nuevo_tienda
             ),
         )
@@ -160,7 +166,7 @@ impl MovimientoService {
             actor_id,
             "TRASLADO BODEGA A TIENDA (REVISTAS)",
             &format!(
-                "EAN: {}, Cantidad trasladada: {}. Bodega restan: {}, Tienda: {}",
+                "Traslado Bodega-Piso {1} unidades de EAN {0} (quedan {2} en bodega, {3} en piso)",
                 req.codigo_ean, req.cantidad, restante_bodega, nuevo_tienda
             ),
         )
@@ -207,7 +213,7 @@ impl MovimientoService {
             actor_id,
             "TRASLADO TIENDA A BODEGA (LIBROS)",
             &format!(
-                "EAN: {}, Cantidad: {}. Tienda restan: {}, Bodega: {}",
+                "Traslado Piso-Bodega {1} unidades de EAN {0} (quedan {2} en piso, {3} en bodega)",
                 req.codigo_ean, req.cantidad, restante_tienda, nuevo_bodega
             ),
         )
@@ -256,7 +262,7 @@ impl MovimientoService {
             actor_id,
             "TRASLADO TIENDA A BODEGA (REVISTAS)",
             &format!(
-                "EAN: {}, Cantidad trasladada: {}. Tienda restan: {}, Bodega: {}",
+                "Traslado Piso-Bodega {1} unidades de EAN {0} (quedan {2} en piso, {3} en bodega)",
                 req.codigo_ean, req.cantidad, restante_tienda, nuevo_bodega
             ),
         )

@@ -38,12 +38,14 @@ pub async fn log_bitacora_tipo(
     accion: &str,
     detalle: &str,
 ) -> Result<(), AppError> {
+    // Recorte al tamaño de las columnas (accion VARCHAR(100), detalle VARCHAR(255)):
+    // si no, MariaDB rechaza el INSERT y el evento se pierde sin aviso.
     sqlx::query(
         "INSERT INTO bitacora (accion, detalle, id_usuarios, id_tipo_evento) \
          VALUES (?, ?, ?, ?)",
     )
-    .bind(accion)
-    .bind(detalle)
+    .bind(recortar(accion, 100))
+    .bind(recortar(detalle, 255))
     .bind(id_usuarios)
     .bind(id_tipo_evento)
     .execute(pool)
@@ -51,6 +53,16 @@ pub async fn log_bitacora_tipo(
     .map_err(AppError::Database)?;
 
     Ok(())
+}
+
+/// Recorta a `max` caracteres (no bytes), terminando en "…" si hubo recorte.
+pub fn recortar(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut r: String = s.chars().take(max.saturating_sub(1)).collect();
+    r.push('…');
+    r
 }
 
 /// Indica si ya existe un registro cuyas columnas coinciden con los valores dados,
@@ -155,5 +167,19 @@ pub fn row_get_f64(row: &sqlx::mysql::MySqlRow, col: &str) -> f64 {
         v as f64
     } else {
         0.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::recortar;
+
+    #[test]
+    fn recorta_por_caracteres_sin_romper_acentos() {
+        assert_eq!(recortar("Devolución", 20), "Devolución");
+        let largo = "ñ".repeat(300);
+        let r = recortar(&largo, 255);
+        assert_eq!(r.chars().count(), 255);
+        assert!(r.ends_with('…'));
     }
 }

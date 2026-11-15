@@ -30,7 +30,9 @@ const DEVOLUCION_SELECT: &str = r#"
            (SELECT SUBSTRING_INDEX(b.detalle, 'Observaciones: ', -1)
               FROM bitacora b
              WHERE b.accion LIKE 'RECHAZAR DEVOLUCI%'
-               AND b.detalle LIKE CONCAT('%#', d.id_devolucion, ' actualizada a estado%Observaciones: %')
+               -- Acepta el texto actual (Devolución #N rechazada. Observaciones: ...)
+               -- y el anterior (#N actualizada a estado RECHAZADO. Observaciones: ...)
+               AND b.detalle LIKE CONCAT('%#', d.id_devolucion, ' %Observaciones: %')
              ORDER BY b.fecha_hora DESC
              LIMIT 1) AS observaciones_rechazo
     FROM devolucion d

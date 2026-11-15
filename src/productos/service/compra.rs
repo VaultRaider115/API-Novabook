@@ -46,11 +46,14 @@ impl CompraService {
             pool,
             actor_id,
             "COMPRA A PROVEEDOR",
+            // Estilo del diseño 7: "Recepción de Factura #PRH-582"
             &format!(
-                "Compra #{} registrada a proveedor '{}' (ID: {}). Piezas: {}, Total: ${:.2}",
-                compra.id_compra,
+                "Recepción de {} · {} · {} pza(s) · ${:.2}",
+                match req.factura.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
+                    Some(f) => format!("Factura #{}", f),
+                    None => format!("compra #{}", compra.id_compra),
+                },
                 compra.nombre_proveedor,
-                compra.id_proveedor,
                 compra.total_articulos,
                 compra.total
             ),

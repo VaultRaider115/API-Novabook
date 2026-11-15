@@ -25,7 +25,7 @@ pub async fn login_handler(
                         id_usuario,
                         2,
                         "INICIO DE SESIÓN FALLIDO",
-                        "Intento de autenticación rechazado",
+                        "Intento de inicio de sesión fallido",
                     )
                     .await
                     {
