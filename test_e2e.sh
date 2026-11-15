@@ -124,14 +124,14 @@ fi
 REG_LIBRO_RES=$(curl -s -X POST "$BASE_URL/bodega/libros" \
   -H "Authorization: Bearer $TOKEN_BODEGA" \
   -H "Content-Type: application/json" \
-  -d '{"codigo_ean": 9786073832014, "sku": 10001, "nombre_libro": "Cien Años de Soledad", "id_proveedor": 1, "generos": [15, 16], "autores": [2], "precio": 350.00, "cantidad": 15, "id_mueble": 11}')
+  -d '{"codigo_ean": 9786073832014, "sku": 100001, "nombre_libro": "Cien Años de Soledad", "id_proveedor": 1, "generos": [15, 16], "autores": [2], "precio": 350.00, "cantidad": 15, "id_mueble": 11}')
 echo "  ✓ Libro registrado con múltiples géneros (15, 16) y autor ID 2"
 
 # Registrar Revista Válida con múltiples géneros
 REG_REV_RES=$(curl -s -X POST "$BASE_URL/bodega/revistas" \
   -H "Authorization: Bearer $TOKEN_BODEGA" \
   -H "Content-Type: application/json" \
-  -d '{"codigo_ean": 9771234567010, "sku": 20001, "nombre_revista": "National Geographic Mar 2026", "id_proveedor": 2, "numero_edicion": 345, "periodicidad": "Mensual", "generos": [15, 18], "precio": 120.00, "cantidad": 15, "id_mueble": 11}')
+  -d '{"codigo_ean": 9771234567010, "sku": 200001, "nombre_revista": "National Geographic Mar 2026", "id_proveedor": 2, "numero_edicion": 345, "periodicidad": "Mensual", "generos": [15, 18], "precio": 120.00, "cantidad": 15, "id_mueble": 11}')
 echo "  ✓ Revista registrada con múltiples géneros (15, 18)"
 
 # -----------------------------------------------------------------------------

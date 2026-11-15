@@ -4,13 +4,47 @@ use crate::{
     productos::{
         model::{
             Libro, RegistrarLibroRequest, RegistrarRevistaRequest, Revista, TipoProducto,
-            validar_patron_ean13,
+            validar_patron_ean13, validar_sku,
         },
         repo::{ProductoRepo, UBICACION_BODEGA},
     },
 };
 
 pub struct ProductoService;
+
+/// SKU de 6 a 7 dígitos, obligatorio para un producto nuevo (si el EAN ya existe
+/// puede omitirse y se conserva el actual) y sin repetirse entre productos.
+async fn validar_sku_producto(pool: &DbPool, ean: i64, sku: Option<i64>) -> Result<(), AppError> {
+    let Some(sku) = sku else {
+        let existe = sqlx::query("SELECT 1 FROM productos WHERE codigo_ean = ?")
+            .bind(ean)
+            .fetch_optional(pool)
+            .await
+            .map_err(AppError::Database)?;
+        if existe.is_none() {
+            return Err(AppError::BadRequest(
+                "El SKU es obligatorio para dar de alta un producto nuevo".to_string(),
+            ));
+        }
+        return Ok(());
+    };
+    validar_sku(sku).map_err(AppError::BadRequest)?;
+
+    let otro = sqlx::query("SELECT codigo_ean FROM productos WHERE SKU = ? AND codigo_ean <> ? LIMIT 1")
+        .bind(sku)
+        .bind(ean)
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)?;
+    if let Some(row) = otro {
+        let ean_otro: i64 = sqlx::Row::get(&row, "codigo_ean");
+        return Err(AppError::Conflict(format!(
+            "El SKU {} ya está asignado al producto con EAN {}",
+            sku, ean_otro
+        )));
+    }
+    Ok(())
+}
 
 impl ProductoService {
     // ========================================================================
@@ -40,6 +74,7 @@ impl ProductoService {
                 req.codigo_ean
             )));
         }
+        validar_sku_producto(pool, req.codigo_ean, req.sku).await?;
 
         if req.cantidad < 0 {
             return Err(AppError::BadRequest(
@@ -92,6 +127,7 @@ impl ProductoService {
                 req.codigo_ean
             )));
         }
+        validar_sku_producto(pool, req.codigo_ean, req.sku).await?;
 
         if req.cantidad < 0 {
             return Err(AppError::BadRequest(
