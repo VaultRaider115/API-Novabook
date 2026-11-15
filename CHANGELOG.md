@@ -73,8 +73,13 @@ Rama `integracion-validaciones`: migración al esquema unificado
   verificador (libros 978/979, revistas 977).
 - **Bitácora**: se quitó el middleware que registraba cada petición GET/POST;
   ahora solo hay eventos de negocio y de acceso.
-- **Documentación**: `AI_CONTEXT.md` reescrito con el estado real del
-  backend.
+- **Documentación**:
+  - `AI_CONTEXT.md` reescrito con el estado real del backend: rutas por rol,
+    reglas, migraciones, pruebas y despliegue.
+  - `README.md` nuevo: guía de arranque (requisitos, base de datos y
+    migraciones, `.env` de ejemplo, ejecución, usuarios de prueba, pruebas
+    y despliegue).
+  - `CHANGELOG.md` con los cambios de esta rama.
 
 ### Fixed
 - Devoluciones sin importar mayúsculas o minúsculas en el tipo de producto.
