@@ -38,6 +38,37 @@ pub struct TrasladoRequest {
     pub observaciones: Option<String>,
 }
 
+/// Una partida de una requisición (documento con varios productos).
+#[derive(Debug, Clone, Deserialize)]
+pub struct PartidaRequisicion {
+    pub codigo_ean: i64,
+    pub cantidad: i32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RequisicionRequest {
+    pub items: Vec<PartidaRequisicion>,
+    pub observaciones: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PartidaRequisicionResp {
+    pub codigo_ean: i64,
+    pub tipo_producto: String,
+    pub titulo: String,
+    pub cantidad: i32,
+}
+
+/// Requisición registrada: todas sus partidas comparten folio (REQ-AAAA-n).
+#[derive(Debug, Clone, Serialize)]
+pub struct RequisicionResponse {
+    pub folio: String,
+    pub fecha_hora: String,
+    pub tipo_movimiento: TipoMovimiento,
+    pub total_piezas: i32,
+    pub items: Vec<PartidaRequisicionResp>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct TrasladoResponse {
     pub codigo_ean: i64,

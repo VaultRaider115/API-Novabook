@@ -34,15 +34,26 @@ if [ -z "$TOKEN_VENDEDOR" ]; then echo "Error en login Vendedor: $VENDEDOR_RES";
 echo "  ✓ Login Vendedor exitoso"
 
 # -----------------------------------------------------------------------------
-# 2. CRUD AUTORES (Bodega)
+# 2. CRUD AUTORES (solo Jefe escribe; diagrama de procesos · Catálogos)
 # -----------------------------------------------------------------------------
 echo "[2/8] Probando CRUD de Autores y validación de integridad..."
 AUTORES_LIST=$(curl -s -X GET "$BASE_URL/autores" -H "Authorization: Bearer $TOKEN_BODEGA")
 echo "  ✓ Lista de autores obtenida: $(echo $AUTORES_LIST | cut -c1-60)..."
 
+# Bodega puede leer pero no escribir autores
+BODEGA_AUTOR_RES=$(curl -s -X POST "$BASE_URL/autores" \
+  -H "Authorization: Bearer $TOKEN_BODEGA" \
+  -H "Content-Type: application/json" \
+  -d '{"nombre": "Prueba", "apellidos": "Permisos", "nacionalidad": "Mexicana"}')
+if echo "$BODEGA_AUTOR_RES" | grep -q '"success":false'; then
+  echo "  ✓ Bodega no puede crear autores (solo el Jefe)"
+else
+  echo "Error: Bodega pudo crear un autor: $BODEGA_AUTOR_RES"; exit 1
+fi
+
 # Crear autor temporal
 CREATE_AUTOR_RES=$(curl -s -X POST "$BASE_URL/autores" \
-  -H "Authorization: Bearer $TOKEN_BODEGA" \
+  -H "Authorization: Bearer $TOKEN_JEFE" \
   -H "Content-Type: application/json" \
   -d '{"nombre": "Isabel", "apellidos": "Allende Llona", "nacionalidad": "Chilena", "biografia": "Premio Nacional de Literatura de Chile."}')
 AUTOR_ID=$(echo "$CREATE_AUTOR_RES" | grep -o '"id_autor":[0-9]*' | cut -d':' -f2)
@@ -51,13 +62,13 @@ echo "  ✓ Autor creado con ID: $AUTOR_ID"
 
 # Modificar autor
 UPDATE_AUTOR_RES=$(curl -s -X PUT "$BASE_URL/autores/$AUTOR_ID" \
-  -H "Authorization: Bearer $TOKEN_BODEGA" \
+  -H "Authorization: Bearer $TOKEN_JEFE" \
   -H "Content-Type: application/json" \
   -d '{"nombre": "Isabel", "apellidos": "Allende", "nacionalidad": "Chilena-Estadounidense", "biografia": "Autora de La Casa de los Espíritus."}')
 echo "  ✓ Autor modificado con éxito"
 
 # Intentar eliminar autor con libros (ej. Gabriel García Márquez ID 2)
-DEL_FAIL_RES=$(curl -s -X DELETE "$BASE_URL/autores/2" -H "Authorization: Bearer $TOKEN_BODEGA")
+DEL_FAIL_RES=$(curl -s -X DELETE "$BASE_URL/autores/2" -H "Authorization: Bearer $TOKEN_JEFE")
 if echo "$DEL_FAIL_RES" | grep -q '"success":false'; then
   echo "  ✓ Integridad referencial protegida: No se permitió borrar autor con libros asociados"
 else
@@ -65,7 +76,7 @@ else
 fi
 
 # Eliminar autor temporal sin libros
-DEL_OK_RES=$(curl -s -X DELETE "$BASE_URL/autores/$AUTOR_ID" -H "Authorization: Bearer $TOKEN_BODEGA")
+DEL_OK_RES=$(curl -s -X DELETE "$BASE_URL/autores/$AUTOR_ID" -H "Authorization: Bearer $TOKEN_JEFE")
 echo "  ✓ Autor temporal sin libros eliminado con éxito"
 
 # -----------------------------------------------------------------------------
@@ -84,9 +95,9 @@ PROV_ID=$(echo "$CREATE_PROV_RES" | grep -o '"id_proveedor":[0-9]*' | cut -d':' 
 if [ -z "$PROV_ID" ]; then echo "Error creando proveedor: $CREATE_PROV_RES"; exit 1; fi
 echo "  ✓ Proveedor creado con ID: $PROV_ID"
 
-# Modificar proveedor
+# Modificar proveedor (solo el Jefe; Bodega únicamente da de alta)
 UPDATE_PROV_RES=$(curl -s -X PUT "$BASE_URL/proveedores/$PROV_ID" \
-  -H "Authorization: Bearer $TOKEN_BODEGA" \
+  -H "Authorization: Bearer $TOKEN_JEFE" \
   -H "Content-Type: application/json" \
   -d '{"nombre_proveedor": "FCE Mexico", "rfc": "FCE340915AA1", "telefono": "5552274699", "correo": "ventas@fce.com.mx", "direccion": "Carretera Picacho Ajusco 227, CDMX", "persona_contacto": "Lic. Taibo II", "estatus": "ACTIVO"}')
 echo "  ✓ Proveedor actualizado con éxito"
@@ -164,6 +175,26 @@ curl -s -X POST "$BASE_URL/bodega/movimientos/libros" \
   -H "Content-Type: application/json" \
   -d '{"codigo_ean": 9786073832014, "cantidad": 5, "motivo": "Reabastecimiento"}' > /dev/null
 echo "  ✓ Traslado Bodega -> Tienda realizado"
+
+# Requisición de salida con folio (varias partidas, todo o nada)
+REQ_RES=$(curl -s -X POST "$BASE_URL/bodega/requisiciones" \
+  -H "Authorization: Bearer $TOKEN_BODEGA" \
+  -H "Content-Type: application/json" \
+  -d '{"items": [{"codigo_ean": 9786073832014, "cantidad": 1}, {"codigo_ean": 9771234567010, "cantidad": 1}]}')
+REQ_FOLIO=$(echo "$REQ_RES" | grep -o '"folio":"REQ-[0-9]*-[0-9]*' | cut -d'"' -f4)
+if [ -z "$REQ_FOLIO" ]; then echo "Error en requisición de salida: $REQ_RES"; exit 1; fi
+echo "  ✓ Requisición de salida registrada con folio $REQ_FOLIO"
+
+# Una partida sin stock suficiente anula toda la requisición
+REQ_FAIL=$(curl -s -X POST "$BASE_URL/bodega/requisiciones" \
+  -H "Authorization: Bearer $TOKEN_BODEGA" \
+  -H "Content-Type: application/json" \
+  -d '{"items": [{"codigo_ean": 9786073832014, "cantidad": 1}, {"codigo_ean": 9771234567010, "cantidad": 99999}]}')
+if echo "$REQ_FAIL" | grep -q '"success":false'; then
+  echo "  ✓ Requisición con stock insuficiente rechazada completa (no se movió nada)"
+else
+  echo "Error: se aceptó una requisición sin stock: $REQ_FAIL"; exit 1
+fi
 
 # Venta sin cliente (debe fallar)
 VENTA_NO_CLI=$(curl -s -X POST "$BASE_URL/vendedor/ventas" \

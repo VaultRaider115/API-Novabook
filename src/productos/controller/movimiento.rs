@@ -7,11 +7,37 @@ use crate::{
     db::AppState,
     error::{ApiResponse, AppError},
     productos::{
-        model::{TrasladoRequest, TrasladoResponse},
+        model::{RequisicionRequest, RequisicionResponse, TipoMovimiento, TrasladoRequest, TrasladoResponse},
         service::MovimientoService,
     },
     usuarios::model::Claims,
 };
+
+/// Bodega: requisición de salida Bodega → Piso de venta (con folio).
+pub async fn requisicion_salida_bodega(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(payload): Json<RequisicionRequest>,
+) -> Result<Json<ApiResponse<RequisicionResponse>>, AppError> {
+    let res = MovimientoService::registrar_requisicion(
+        &state.pool, claims.id_usuario, TipoMovimiento::BodegaATienda, payload,
+    )
+    .await?;
+    Ok(Json(ApiResponse::success_msg(res, "Requisición de salida registrada")))
+}
+
+/// Vendedor: requisición de entrada Piso de venta → Bodega (con folio).
+pub async fn requisicion_entrada_vendedor(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(payload): Json<RequisicionRequest>,
+) -> Result<Json<ApiResponse<RequisicionResponse>>, AppError> {
+    let res = MovimientoService::registrar_requisicion(
+        &state.pool, claims.id_usuario, TipoMovimiento::TiendaABodega, payload,
+    )
+    .await?;
+    Ok(Json(ApiResponse::success_msg(res, "Requisición de entrada registrada")))
+}
 
 pub async fn movimiento_bodega_tienda_libros(
     State(state): State<AppState>,

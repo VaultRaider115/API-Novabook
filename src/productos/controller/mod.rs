@@ -137,6 +137,7 @@ pub fn router(state: AppState) -> Router<AppState> {
             "/movimientos/revistas",
             post(movimiento::movimiento_bodega_tienda_revistas),
         )
+        .route("/requisiciones", post(movimiento::requisicion_salida_bodega))
         .route("/compras", post(compra::registrar_compra_bodega))
         .route("/compras", get(compra::listar_compras_bodega))
         .layer(middleware::from_fn(require_bodega))
@@ -153,6 +154,7 @@ pub fn router(state: AppState) -> Router<AppState> {
             "/movimientos/revistas",
             post(movimiento::movimiento_tienda_bodega_revistas),
         )
+        .route("/requisiciones", post(movimiento::requisicion_entrada_vendedor))
         .route("/devoluciones", post(devolucion::crear_devolucion_vendedor))
         .route(
             "/devoluciones/{id}/pdf/libros",

@@ -2,14 +2,119 @@ use crate::{
     db::{DbPool, log_bitacora},
     error::AppError,
     productos::{
-        model::{TipoMovimiento, TipoProducto, TrasladoRequest, TrasladoResponse},
+        model::{
+            PartidaRequisicion, RequisicionRequest, RequisicionResponse, TipoMovimiento,
+            TipoProducto, TrasladoRequest, TrasladoResponse,
+        },
         repo::{MovimientoRepo, UBICACION_BODEGA, UBICACION_TIENDA},
     },
 };
 
 pub struct MovimientoService;
 
+/// Máximo de partidas por requisición (un documento impreso razonable).
+const MAX_PARTIDAS_REQUISICION: usize = 100;
+
+/// Valida las partidas y suma las de un mismo EAN en una sola.
+fn normalizar_partidas(entrada: Vec<PartidaRequisicion>) -> Result<Vec<PartidaRequisicion>, AppError> {
+    if entrada.is_empty() {
+        return Err(AppError::BadRequest("La requisición debe tener al menos una partida".to_string()));
+    }
+    if entrada.len() > MAX_PARTIDAS_REQUISICION {
+        return Err(AppError::BadRequest(format!(
+            "La requisición no puede tener más de {} partidas", MAX_PARTIDAS_REQUISICION
+        )));
+    }
+    let mut items: Vec<PartidaRequisicion> = Vec::new();
+    for it in entrada {
+        if it.codigo_ean <= 0 {
+            return Err(AppError::BadRequest("Código EAN inválido".to_string()));
+        }
+        if it.cantidad <= 0 {
+            return Err(AppError::BadRequest(format!(
+                "La cantidad del EAN {} debe ser mayor a 0", it.codigo_ean
+            )));
+        }
+        match items.iter_mut().find(|p| p.codigo_ean == it.codigo_ean) {
+            Some(p) => p.cantidad += it.cantidad,
+            None => items.push(it),
+        }
+    }
+    Ok(items)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_PARTIDAS_REQUISICION, normalizar_partidas};
+    use crate::productos::model::PartidaRequisicion;
+
+    fn p(ean: i64, cantidad: i32) -> PartidaRequisicion {
+        PartidaRequisicion { codigo_ean: ean, cantidad }
+    }
+
+    #[test]
+    fn suma_ean_repetidos_y_conserva_orden() {
+        let r = normalizar_partidas(vec![p(978_1, 2), p(977_1, 5), p(978_1, 3)]).unwrap();
+        assert_eq!(r.len(), 2);
+        assert_eq!((r[0].codigo_ean, r[0].cantidad), (978_1, 5));
+        assert_eq!((r[1].codigo_ean, r[1].cantidad), (977_1, 5));
+    }
+
+    #[test]
+    fn rechaza_vacia_cantidades_y_ean_invalidos() {
+        assert!(normalizar_partidas(vec![]).is_err());
+        assert!(normalizar_partidas(vec![p(978_1, 0)]).is_err());
+        assert!(normalizar_partidas(vec![p(978_1, -2)]).is_err());
+        assert!(normalizar_partidas(vec![p(0, 1)]).is_err());
+    }
+
+    #[test]
+    fn limita_el_numero_de_partidas() {
+        let muchas: Vec<_> = (1..=MAX_PARTIDAS_REQUISICION as i64 + 1).map(|e| p(e, 1)).collect();
+        assert!(normalizar_partidas(muchas).is_err());
+        let justas: Vec<_> = (1..=MAX_PARTIDAS_REQUISICION as i64).map(|e| p(e, 1)).collect();
+        assert!(normalizar_partidas(justas).is_ok());
+    }
+}
+
 impl MovimientoService {
+    /// Requisición de varias partidas con folio. Bodega → Piso (salida) o
+    /// Piso → Bodega (entrada); todo o nada.
+    pub async fn registrar_requisicion(
+        pool: &DbPool,
+        actor_id: i64,
+        tipo: TipoMovimiento,
+        req: RequisicionRequest,
+    ) -> Result<RequisicionResponse, AppError> {
+        let items = normalizar_partidas(req.items)?;
+
+        let (origen, destino, accion) = match tipo {
+            TipoMovimiento::BodegaATienda => (UBICACION_BODEGA, UBICACION_TIENDA, "REQUISICIÓN DE SALIDA BODEGA A PISO"),
+            TipoMovimiento::TiendaABodega => (UBICACION_TIENDA, UBICACION_BODEGA, "REQUISICIÓN DE ENTRADA PISO A BODEGA"),
+        };
+        let reg = MovimientoRepo::registrar_requisicion(
+            pool, &items, origen, destino, actor_id, req.observaciones.as_deref(),
+        )
+        .await?;
+
+        let total_piezas: i32 = reg.items.iter().map(|p| p.cantidad).sum();
+        let _ = log_bitacora(
+            pool,
+            actor_id,
+            accion,
+            &format!("{}: {} partida(s), {} pieza(s)", reg.folio, reg.items.len(), total_piezas),
+        )
+        .await;
+
+        Ok(RequisicionResponse {
+            folio: reg.folio,
+            fecha_hora: reg.fecha_hora,
+            tipo_movimiento: tipo,
+            total_piezas,
+            items: reg.items,
+        })
+    }
+
     pub async fn traslado_bodega_a_tienda_libros(
         pool: &DbPool,
         actor_id: i64,
