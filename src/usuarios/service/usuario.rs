@@ -83,6 +83,50 @@ fn validate_phone(phone: Option<i64>) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Teléfono recibido como texto o número: solo dígitos, exactamente 10 y sin
+/// 0 inicial (como número, un 0 inicial se perdería sin avisar). Vacío o
+/// ausente → sin teléfono. Errores 400 con mensaje claro.
+fn parse_telefono(entrada: Option<&serde_json::Value>) -> Result<Option<i64>, AppError> {
+    let texto = match entrada {
+        None | Some(serde_json::Value::Null) => return Ok(None),
+        Some(serde_json::Value::String(s)) => s.trim().to_string(),
+        Some(serde_json::Value::Number(n)) => n.to_string(),
+        Some(_) => {
+            return Err(AppError::BadRequest(
+                "El teléfono debe enviarse como texto o número".to_string(),
+            ));
+        }
+    };
+    if texto.is_empty() {
+        return Ok(None);
+    }
+    if !texto.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(
+            "El teléfono solo puede contener dígitos (sin espacios, guiones ni letras)".to_string(),
+        ));
+    }
+    if texto.starts_with('0') {
+        return Err(AppError::BadRequest(
+            "El teléfono no puede empezar con 0".to_string(),
+        ));
+    }
+    if texto.len() != 10 {
+        return Err(AppError::BadRequest(format!(
+            "El teléfono debe tener exactamente 10 dígitos (tiene {})",
+            texto.len()
+        )));
+    }
+    texto
+        .parse::<i64>()
+        .map(Some)
+        .map_err(|_| AppError::BadRequest("Teléfono inválido".to_string()))
+}
+
+/// Quita espacios al inicio/fin y colapsa los repetidos: "  Ana   María " → "Ana María".
+fn limpiar_nombre(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn validate_person_name(value: &str, field: &str) -> Result<(), AppError> {
     if value.chars().any(|c| c.is_ascii_digit()) {
         return Err(AppError::BadRequest(format!(
@@ -205,6 +249,8 @@ impl UsuarioService {
                 "ID de usuario debe ser mayor a 0".to_string(),
             ));
         }
+        let mut req = req;
+        req.telefono = parse_telefono(req.telefono_entrada.as_ref())?;
         validate_required_text(&req.nombre, "El nombre", MAX_NAME_LENGTH)?;
         validate_optional_text(
             req.apellido_paterno.as_deref(),
@@ -241,17 +287,16 @@ impl UsuarioService {
             )));
         }
 
-        let mut req = req;
         req.contrasena = hash_password(&req.contrasena)?;
 
-        req.nombre = req.nombre.trim().to_string();
+        req.nombre = limpiar_nombre(&req.nombre);
         req.apellido_paterno = req
             .apellido_paterno
-            .map(|s| s.trim().to_string())
+            .map(|s| limpiar_nombre(&s))
             .filter(|s| !s.is_empty());
         req.apellido_materno = req
             .apellido_materno
-            .map(|s| s.trim().to_string())
+            .map(|s| limpiar_nombre(&s))
             .filter(|s| !s.is_empty());
 
         UsuarioRepo::crear(pool, &req).await?;
@@ -283,6 +328,8 @@ impl UsuarioService {
         let actual = UsuarioRepo::buscar_por_id(pool, id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Usuario #{} no encontrado", id)))?;
+        let mut req = req;
+        req.telefono = parse_telefono(req.telefono_entrada.as_ref())?;
 
         let gerente_id = RolEnum::Gerente as i32;
         if actor_rol != RolEnum::Gerente {
@@ -326,8 +373,11 @@ impl UsuarioService {
         {
             let gerentes_activos = UsuarioRepo::contar_activos_por_rol(pool, gerente_id).await?;
             if gerentes_activos <= 1 {
-                return Err(AppError::BadRequest(
-                    "Debe permanecer al menos un gerente activo en el sistema".to_string(),
+                // 409: la petición es válida pero choca con el estado actual.
+                return Err(AppError::Conflict(
+                    "No se puede: es el último Gerente activo y debe permanecer al menos uno \
+                     (no se le puede cambiar el rol ni desactivar)"
+                        .to_string(),
                 ));
             }
         }
@@ -354,10 +404,9 @@ impl UsuarioService {
         }
         validate_phone(req.telefono)?;
 
-        let mut req = req;
-        req.nombre = req.nombre.map(|s| s.trim().to_string());
-        req.apellido_paterno = req.apellido_paterno.map(|s| s.trim().to_string());
-        req.apellido_materno = req.apellido_materno.map(|s| s.trim().to_string());
+        req.nombre = req.nombre.map(|s| limpiar_nombre(&s));
+        req.apellido_paterno = req.apellido_paterno.map(|s| limpiar_nombre(&s));
+        req.apellido_materno = req.apellido_materno.map(|s| limpiar_nombre(&s));
 
         if req.contrasena.as_deref() == Some("") {
             req.contrasena = None;
@@ -405,7 +454,7 @@ impl UsuarioService {
         }
 
         if !actual.estado {
-            return Err(AppError::BadRequest(
+            return Err(AppError::Conflict(
                 "El usuario ya se encuentra inactivo".to_string(),
             ));
         }
@@ -413,8 +462,8 @@ impl UsuarioService {
         if actual.id_roles == gerente_id {
             let gerentes_activos = UsuarioRepo::contar_activos_por_rol(pool, gerente_id).await?;
             if gerentes_activos <= 1 {
-                return Err(AppError::BadRequest(
-                    "No puedes dar de baja al único gerente activo del sistema".to_string(),
+                return Err(AppError::Conflict(
+                    "No puedes dar de baja al único Gerente activo del sistema".to_string(),
                 ));
             }
         }
@@ -439,9 +488,38 @@ impl UsuarioService {
 #[cfg(test)]
 mod tests {
     use super::{
-        hash_password, validate_optional_text, validate_password, validate_phone,
-        validate_required_text, verify_password,
+        hash_password, limpiar_nombre, parse_telefono, validate_optional_text, validate_password,
+        validate_phone, validate_required_text, verify_password,
     };
+    use serde_json::json;
+
+    #[test]
+    fn telefono_acepta_texto_o_numero_de_10_digitos() {
+        assert_eq!(parse_telefono(Some(&json!("8441112233"))).unwrap(), Some(8441112233));
+        assert_eq!(parse_telefono(Some(&json!(8441112233_i64))).unwrap(), Some(8441112233));
+        assert_eq!(parse_telefono(Some(&json!(" 8441112233 "))).unwrap(), Some(8441112233));
+        assert_eq!(parse_telefono(None).unwrap(), None);
+        assert_eq!(parse_telefono(Some(&json!(null))).unwrap(), None);
+        assert_eq!(parse_telefono(Some(&json!(""))).unwrap(), None);
+    }
+
+    #[test]
+    fn telefono_rechaza_cero_inicial_letras_y_largo() {
+        let msg = |v| format!("{}", parse_telefono(Some(&v)).unwrap_err());
+        assert!(msg(json!("0844111223")).contains("no puede empezar con 0"));
+        assert!(msg(json!("844-111-22")).contains("solo puede contener dígitos"));
+        assert!(msg(json!("84411122ab")).contains("solo puede contener dígitos"));
+        assert!(msg(json!("844111223")).contains("exactamente 10"));
+        assert!(msg(json!(844111223)).contains("exactamente 10"));
+        assert!(msg(json!(true)).contains("texto o número"));
+    }
+
+    #[test]
+    fn nombres_sin_espacios_sobrantes() {
+        assert_eq!(limpiar_nombre("  Ana   María  "), "Ana María");
+        assert_eq!(limpiar_nombre("Pérez\tLuévano"), "Pérez Luévano");
+        assert_eq!(limpiar_nombre("   "), "");
+    }
 
     #[test]
     fn plaintext_stored_password_never_authenticates() {

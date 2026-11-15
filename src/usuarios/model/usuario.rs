@@ -86,6 +86,11 @@ pub struct CrearUsuarioRequest {
     pub nombre: String,
     pub apellido_paterno: Option<String>,
     pub apellido_materno: Option<String>,
+    /// Teléfono tal como llega (texto o número); el servicio lo valida
+    /// (solo dígitos, 10, sin 0 inicial) y llena `telefono`.
+    #[serde(rename = "telefono", default)]
+    pub telefono_entrada: Option<serde_json::Value>,
+    #[serde(skip)]
     pub telefono: Option<i64>,
     pub contrasena: String,
 }
@@ -96,6 +101,10 @@ pub struct ActualizarUsuarioRequest {
     pub nombre: Option<String>,
     pub apellido_paterno: Option<String>,
     pub apellido_materno: Option<String>,
+    /// Ver `CrearUsuarioRequest::telefono_entrada`.
+    #[serde(rename = "telefono", default)]
+    pub telefono_entrada: Option<serde_json::Value>,
+    #[serde(skip)]
     pub telefono: Option<i64>,
     pub contrasena: Option<String>,
     pub estatus: Option<bool>,
