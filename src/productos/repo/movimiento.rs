@@ -18,6 +18,8 @@ struct TrasladoTx {
     nuevo_destino: i32,
     tipo_producto: String,
     ids_movimiento: Vec<i64>,
+    /// Mueble que recibió las piezas.
+    id_destino: i32,
 }
 
 /// Requisición ya registrada (todas las partidas en la misma transacción).
@@ -90,9 +92,10 @@ impl MovimientoRepo {
         observaciones: Option<&str>,
     ) -> Result<RequisicionRegistrada, AppError> {
         let mut tx = pool.begin().await.map_err(AppError::Database)?;
-        let editorial = Self::editorial_unica(&mut tx, items).await?;
+        let (id_proveedor, editorial) = Self::editorial_unica(&mut tx, items).await?;
 
         let mut ids: Vec<i64> = Vec::new();
+        let mut destinos: Vec<i32> = Vec::with_capacity(items.len());
         let mut partidas = Vec::with_capacity(items.len());
         for it in items {
             let r = Self::trasladar_en_tx(
@@ -100,6 +103,7 @@ impl MovimientoRepo {
             )
             .await?;
             ids.extend(&r.ids_movimiento);
+            destinos.push(r.id_destino);
 
             let titulo: Option<String> = sqlx::query(
                 "SELECT COALESCE(l.nombre_libro, r.nombre_revista) AS titulo FROM productos p \
@@ -148,6 +152,33 @@ impl MovimientoRepo {
         upd.push(")");
         upd.build().execute(&mut *tx).await.map_err(AppError::Database)?;
 
+        // Documento: la salida queda PENDIENTE hasta que el Vendedor la recibe
+        // (pasos 2 y 3); la entrada solo queda registrada.
+        let (tipo_doc, estado) = if origen == UBICACION_BODEGA { ("SALIDA", "PENDIENTE") } else { ("ENTRADA", "REGISTRADA") };
+        sqlx::query(
+            "INSERT INTO requisicion (folio, tipo, id_proveedor, id_usuarios, fecha, estado, observaciones)              VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&folio)
+        .bind(tipo_doc)
+        .bind(id_proveedor)
+        .bind(actor_id)
+        .bind(&fecha_hora)
+        .bind(estado)
+        .bind(observaciones.map(str::trim).filter(|o| !o.is_empty()).map(|o| o.chars().take(200).collect::<String>()))
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::Database)?;
+        for (it, mueble) in items.iter().zip(&destinos) {
+            sqlx::query("INSERT INTO detalle_requisicion (folio, codigo_ean, cantidad, id_mueble) VALUES (?, ?, ?, ?)")
+                .bind(&folio)
+                .bind(it.codigo_ean)
+                .bind(it.cantidad)
+                .bind(*mueble)
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
+        }
+
         tx.commit().await.map_err(AppError::Database)?;
         Ok(RequisicionRegistrada { folio, fecha_hora, editorial, items: partidas })
     }
@@ -155,7 +186,7 @@ impl MovimientoRepo {
     /// Diagrama, pasos 2 y 6: una sola editorial (proveedor) por documento.
     /// Devuelve el nombre de esa editorial; un EAN inexistente se deja pasar
     /// aquí para que el traslado lo reporte con su propio mensaje.
-    async fn editorial_unica(tx: &mut Tx<'_>, items: &[PartidaRequisicion]) -> Result<String, AppError> {
+    async fn editorial_unica(tx: &mut Tx<'_>, items: &[PartidaRequisicion]) -> Result<(Option<i32>, String), AppError> {
         // (id_proveedor, nombre, ean, título) de la primera partida encontrada.
         let mut primera: Option<(i32, String, i64, String)> = None;
         for it in items {
@@ -186,7 +217,7 @@ impl MovimientoRepo {
                 Some(_) => {}
             }
         }
-        Ok(primera.map(|p| p.1).unwrap_or_default())
+        Ok(primera.map(|p| (Some(p.0), p.1)).unwrap_or((None, String::new())))
     }
 
     /// Lo bajado en la última salida (bodega → piso) de un producto y lo que ya
@@ -321,7 +352,7 @@ impl MovimientoRepo {
             crate::db::row_get_i32(&rows, "t")
         };
 
-        Ok(TrasladoTx { restante, nuevo_destino, tipo_producto: tipo_db, ids_movimiento })
+        Ok(TrasladoTx { restante, nuevo_destino, tipo_producto: tipo_db, ids_movimiento, id_destino })
     }
 }
 

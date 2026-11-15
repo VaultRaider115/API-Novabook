@@ -43,10 +43,24 @@ impl CompraRepo {
         let mut total_compra = 0.0;
         let mut total_articulos = 0;
         let mut items_procesados = Vec::new();
+        // (ean, facturada, recibida, costo) de lo que llegó incompleto.
+        let mut faltantes: Vec<(i64, i32, i32, f64)> = Vec::new();
 
         for item in &req.items {
-            if item.cantidad <= 0 {
-                return Err(AppError::BadRequest("La cantidad comprada debe ser mayor a 0".to_string()));
+            let facturada = item.cantidad_facturada.unwrap_or(item.cantidad);
+            if item.cantidad < 0 {
+                return Err(AppError::BadRequest("La cantidad recibida no puede ser negativa".to_string()));
+            }
+            if facturada <= 0 {
+                return Err(AppError::BadRequest(format!(
+                    "La cantidad facturada del EAN {} debe ser mayor a 0", item.codigo_ean
+                )));
+            }
+            if item.cantidad > facturada {
+                return Err(AppError::BadRequest(format!(
+                    "Del EAN {} llegaron {} pieza(s) pero la factura dice {}; corrige la cantidad facturada",
+                    item.codigo_ean, item.cantidad, facturada
+                )));
             }
             if item.costo_unitario < 0.0 {
                 return Err(AppError::BadRequest("El costo unitario no puede ser negativo".to_string()));
@@ -78,6 +92,20 @@ impl CompraRepo {
                 )));
             }
             let nombre_prod: String = prod.try_get("nombre").unwrap_or_else(|_| format!("EAN {}", item.codigo_ean));
+
+            if facturada > item.cantidad {
+                match faltantes.iter_mut().find(|f| f.0 == item.codigo_ean) {
+                    Some(f) => {
+                        f.1 += facturada;
+                        f.2 += item.cantidad;
+                    }
+                    None => faltantes.push((item.codigo_ean, facturada, item.cantidad, item.costo_unitario)),
+                }
+            }
+            // Título facturado que no llegó: solo queda en la incidencia.
+            if item.cantidad == 0 {
+                continue;
+            }
 
             // Mueble destino en bodega
             let id_mueble = match item.id_mueble {
@@ -133,6 +161,18 @@ impl CompraRepo {
             });
         }
 
+        if total_articulos == 0 {
+            return Err(AppError::BadRequest(
+                "No llegó ninguna pieza: no hay compra que registrar".to_string(),
+            ));
+        }
+
+        let id_incidencia = if faltantes.is_empty() {
+            None
+        } else {
+            Some(crate::productos::repo::IncidenciaRepo::crear_en_tx(&mut tx, id_compra, actor_id, &faltantes).await?)
+        };
+
         sqlx::query("UPDATE compras_proveedor SET total = ? WHERE id_compras_proveedor = ?")
             .bind(total_compra)
             .bind(id_compra)
@@ -151,6 +191,11 @@ impl CompraRepo {
 
         tx.commit().await.map_err(AppError::Database)?;
 
+        let incidencia = match id_incidencia {
+            Some(id) => Some(crate::productos::repo::IncidenciaRepo::obtener(pool, id).await?),
+            None => None,
+        };
+
         Ok(CompraResponse {
             id_compra,
             id_proveedor: req.id_proveedor,
@@ -163,6 +208,7 @@ impl CompraRepo {
             observaciones: req.observaciones.clone(),
             factura: req.factura.clone(),
             items: items_procesados,
+            incidencia,
             mensaje: "Compra a proveedor registrada e inventario en bodega actualizado".to_string(),
         })
     }
@@ -237,6 +283,7 @@ impl CompraRepo {
                 observaciones: None,
                 factura: r.try_get::<Option<String>, _>("factura").ok().flatten(),
                 items,
+                incidencia: None,
                 mensaje: "OK".to_string(),
             });
         }

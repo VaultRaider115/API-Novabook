@@ -10,7 +10,7 @@ echo "=== INICIANDO PRUEBAS E2E NOVABOOK V2 ==="
 # -----------------------------------------------------------------------------
 # 1. AUTENTICACIÓN
 # -----------------------------------------------------------------------------
-echo "[1/10] Probando autenticación para los 4 roles..."
+echo "[1/11] Probando autenticación para los 4 roles..."
 
 # Gerente
 GERENTE_RES=$(curl -s -X POST "$BASE_URL/auth/login" -H "Content-Type: application/json" -d '{"id_usuario": 1001, "contrasena": "admin123"}')
@@ -39,7 +39,7 @@ echo "  ✓ Login Vendedor exitoso"
 # -----------------------------------------------------------------------------
 # 2. CRUD AUTORES (solo Jefe escribe; diagrama de procesos · Catálogos)
 # -----------------------------------------------------------------------------
-echo "[2/10] Probando CRUD de Autores y validación de integridad..."
+echo "[2/11] Probando CRUD de Autores y validación de integridad..."
 AUTORES_LIST=$(curl -s -X GET "$BASE_URL/autores" -H "Authorization: Bearer $TOKEN_BODEGA")
 echo "  ✓ Lista de autores obtenida: $(echo $AUTORES_LIST | cut -c1-60)..."
 
@@ -85,7 +85,7 @@ echo "  ✓ Autor temporal sin libros eliminado con éxito"
 # -----------------------------------------------------------------------------
 # 3. CRUD PROVEEDORES
 # -----------------------------------------------------------------------------
-echo "[3/10] Probando CRUD de Proveedores..."
+echo "[3/11] Probando CRUD de Proveedores..."
 PROV_LIST=$(curl -s -X GET "$BASE_URL/proveedores" -H "Authorization: Bearer $TOKEN_BODEGA")
 echo "  ✓ Lista de proveedores obtenida"
 
@@ -108,7 +108,7 @@ echo "  ✓ Proveedor actualizado con éxito"
 # -----------------------------------------------------------------------------
 # 4. GÉNEROS Y VALIDACIÓN DE CÓDIGO EAN-13
 # -----------------------------------------------------------------------------
-echo "[4/10] Probando catálogo de Géneros y validación EAN-13..."
+echo "[4/11] Probando catálogo de Géneros y validación EAN-13..."
 GENEROS_RES=$(curl -s -X GET "$BASE_URL/generos" -H "Authorization: Bearer $TOKEN_BODEGA")
 echo "  ✓ Catálogo de géneros obtenido"
 
@@ -151,7 +151,7 @@ echo "  ✓ Revista registrada con múltiples géneros (15, 18)"
 # -----------------------------------------------------------------------------
 # 5. REGISTRO DE COMPRAS A PROVEEDOR (BODEGA)
 # -----------------------------------------------------------------------------
-echo "[5/10] Probando registro de Compras a Proveedor..."
+echo "[5/11] Probando registro de Compras a Proveedor..."
 COMPRA_RES=$(curl -s -X POST "$BASE_URL/bodega/compras" \
   -H "Authorization: Bearer $TOKEN_BODEGA" \
   -H "Content-Type: application/json" \
@@ -170,7 +170,7 @@ echo "  ✓ Historial de compras consultado correctamente"
 # -----------------------------------------------------------------------------
 # 6. TRASLADOS Y VENTAS CON NOMBRE DE CLIENTE (VENDEDOR)
 # -----------------------------------------------------------------------------
-echo "[6/10] Probando traslados y Venta con Nombre del Cliente..."
+echo "[6/11] Probando traslados y Venta con Nombre del Cliente..."
 
 # Traslado Bodega -> Tienda
 curl -s -X POST "$BASE_URL/bodega/movimientos/libros" \
@@ -246,7 +246,7 @@ fi
 # -----------------------------------------------------------------------------
 # 7. DEVOLUCIÓN A PROVEEDOR Y DESCARGA DE PDF COMPLETO
 # -----------------------------------------------------------------------------
-echo "[7/10] Probando Devolución y generación de PDF con datos completos de Proveedor..."
+echo "[7/11] Probando Devolución y generación de PDF con datos completos de Proveedor..."
 nueva_devolucion() {
   curl -s -X POST "$BASE_URL/vendedor/devoluciones" \
     -H "Authorization: Bearer $TOKEN_VENDEDOR" \
@@ -324,7 +324,7 @@ fi
 # -----------------------------------------------------------------------------
 # 8. JEFE DE DEPARTAMENTO: BITÁCORA CON VENTAS Y COMPRAS
 # -----------------------------------------------------------------------------
-echo "[8/10] Probando consulta de Bitácora Diaria del Jefe de Departamento..."
+echo "[8/11] Probando consulta de Bitácora Diaria del Jefe de Departamento..."
 BITACORA_RES=$(curl -s -X GET "$BASE_URL/jefe/movimientos/diarios" \
   -H "Authorization: Bearer $TOKEN_JEFE")
 
@@ -337,7 +337,7 @@ fi
 # -----------------------------------------------------------------------------
 # 9. INVENTARIO MENSUAL Y SOLICITUDES DE EDITORIAL (diagrama, paso 7)
 # -----------------------------------------------------------------------------
-echo "[9/10] Probando inventario mensual y solicitudes de editorial..."
+echo "[9/11] Probando inventario mensual y solicitudes de editorial..."
 SOL=$(curl -s -X POST "$BASE_URL/jefe/solicitudes-editorial" -H "Authorization: Bearer $TOKEN_JEFE"   -H "Content-Type: application/json" -d '{"id_proveedor": 2, "referencia": "Correo de prueba e2e", "eans": [9771234567010]}')
 echo "$SOL" | grep -q '"success":true' || { echo "Error registrando solicitud: $SOL"; exit 1; }
 echo "  ✓ Solicitud de la editorial registrada"
@@ -359,7 +359,7 @@ echo "  ✓ El Jefe aprueba el inventario y se ajusta el piso"
 # -----------------------------------------------------------------------------
 # 10. RETORNO A BODEGA LIMITADO A LA MITAD (diagrama, pasos 3 y 6)
 # -----------------------------------------------------------------------------
-echo "[10/10] Probando el retorno de piso a bodega (máximo la mitad de la última bajada)..."
+echo "[10/11] Probando el retorno de piso a bodega (máximo la mitad de la última bajada)..."
 BAJA=$(curl -s -X POST "$BASE_URL/bodega/requisiciones" -H "Authorization: Bearer $TOKEN_BODEGA"   -H "Content-Type: application/json" -d '{"items": [{"codigo_ean": 9788497776639, "cantidad": 4}]}')
 echo "$BAJA" | grep -q '"success":true' || { echo "Error bajando a piso: $BAJA"; exit 1; }
 DEMAS=$(curl -s -X POST "$BASE_URL/vendedor/requisiciones" -H "Authorization: Bearer $TOKEN_VENDEDOR"   -H "Content-Type: application/json" -d '{"items": [{"codigo_ean": 9788497776639, "cantidad": 3}]}')
@@ -370,5 +370,30 @@ echo "$MITAD" | grep -q '"success":true' || { echo "Error regresando la mitad: $
 OTRA=$(curl -s -X POST "$BASE_URL/vendedor/requisiciones" -H "Authorization: Bearer $TOKEN_VENDEDOR"   -H "Content-Type: application/json" -d '{"items": [{"codigo_ean": 9788497776639, "cantidad": 1}]}')
 echo "$OTRA" | grep -q '"success":false' || { echo "Error: se regresó más de la mitad en dos veces: $OTRA"; exit 1; }
 echo "  ✓ Regresan 2 (la mitad) y ya no se puede regresar otra pieza"
+
+# -----------------------------------------------------------------------------
+# 11. COMPRA INCOMPLETA Y RECEPCIÓN DE LA SALIDA (diagrama, pasos 1, 2 y 3)
+# -----------------------------------------------------------------------------
+echo "[11/11] Probando incidencia por paquete incompleto y recepción de la salida en piso..."
+INC=$(curl -s -X POST "$BASE_URL/bodega/compras" -H "Authorization: Bearer $TOKEN_BODEGA"   -H "Content-Type: application/json" -d '{"id_proveedor": 3, "factura": "PRH-77", "items": [{"codigo_ean": 9786073868723, "cantidad": 3, "cantidad_facturada": 5, "costo_unitario": 199}]}')
+echo "$INC" | grep -q '"piezas_pendientes":2' || { echo "Error: la compra incompleta no abrió incidencia: $INC"; exit 1; }
+echo "$INC" | grep -q '"para":"ventas@penguinrandomhouse.mx"' || { echo "Error: el correo no va al proveedor: $INC"; exit 1; }
+INC_ID=$(echo "$INC" | grep -o '"id_incidencia":[0-9]*' | head -1 | cut -d: -f2)
+echo "  ✓ Incidencia #$INC_ID abierta con el borrador del correo al proveedor"
+REP=$(curl -s -X POST "$BASE_URL/bodega/incidencias/$INC_ID/reposicion" -H "Authorization: Bearer $TOKEN_BODEGA"   -H "Content-Type: application/json" -d '{"items": [{"codigo_ean": 9786073868723, "cantidad": 2}]}')
+echo "$REP" | grep -q '"estado":"CERRADA"' || { echo "Error cerrando la incidencia: $REP"; exit 1; }
+echo "  ✓ Llegan los faltantes y la incidencia se cierra"
+SAL=$(curl -s -X POST "$BASE_URL/bodega/requisiciones" -H "Authorization: Bearer $TOKEN_BODEGA"   -H "Content-Type: application/json" -d '{"items": [{"codigo_ean": 9786073868723, "cantidad": 5}]}')
+FOLIO=$(echo "$SAL" | grep -o '"folio":"REQ-[0-9-]*' | cut -d'"' -f4)
+[ -n "$FOLIO" ] || { echo "Error registrando la salida: $SAL"; exit 1; }
+PEND=$(curl -s "$BASE_URL/vendedor/requisiciones?tipo=SALIDA&estado=PENDIENTE" -H "Authorization: Bearer $TOKEN_VENDEDOR")
+echo "$PEND" | grep -q "\"folio\":\"$FOLIO\"" || { echo "Error: la salida no aparece pendiente: $PEND"; exit 1; }
+REC=$(curl -s -X POST "$BASE_URL/vendedor/requisiciones/$FOLIO/recepcion" -H "Authorization: Bearer $TOKEN_VENDEDOR"   -H "Content-Type: application/json" -d '{"items": [{"codigo_ean": 9786073868723, "cantidad_recibida": 4, "id_mueble": 13}], "observaciones": "Llegaron 4"}')
+echo "$REC" | grep -q '"estado":"CORREGIDA"' || { echo "Error en la recepción corregida: $REC"; exit 1; }
+echo "$REC" | grep -q '"cantidad_recibida":4,"id_mueble":13' || { echo "Error: no se guardó lo recibido o el mueble: $REC"; exit 1; }
+echo "  ✓ $FOLIO recibida: corregida a 4 piezas y acomodada en el mueble P-013"
+OTRA=$(curl -s -X POST "$BASE_URL/vendedor/requisiciones/$FOLIO/recepcion" -H "Authorization: Bearer $TOKEN_VENDEDOR"   -H "Content-Type: application/json" -d '{"items": [{"codigo_ean": 9786073868723, "cantidad_recibida": 4, "id_mueble": 13}]}')
+echo "$OTRA" | grep -q '"code":"CONFLICT"' || { echo "Error: se recibió dos veces: $OTRA"; exit 1; }
+echo "  ✓ Una requisición solo se recibe una vez"
 
 echo "=== TODAS LAS PRUEBAS E2E NOVABOOK V2 COMPLETADAS CON ÉXITO ==="

@@ -81,3 +81,66 @@ pub struct TrasladoResponse {
     pub stock_destino_nuevo: i32,
     pub mensaje: String,
 }
+
+// ----------------------------------------------------------------------------
+// Recepción de la requisición de salida (diagrama, pasos 2 y 3): el Vendedor
+// confirma lo que llegó (o lo corrige) y elige el mueble de piso de cada libro.
+// ----------------------------------------------------------------------------
+
+/// Filtros de GET /requisiciones (`tipo` SALIDA|ENTRADA, `estado`).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct FiltroRequisiciones {
+    pub tipo: Option<String>,
+    pub estado: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RequisicionResumen {
+    pub folio: String,
+    /// SALIDA (bodega → piso) | ENTRADA (piso → bodega)
+    pub tipo: String,
+    /// PENDIENTE | CONFIRMADA | CORREGIDA | REGISTRADA
+    pub estado: String,
+    pub fecha_hora: String,
+    pub editorial: String,
+    pub registro: String,
+    pub recibio: Option<String>,
+    pub fecha_recepcion: Option<String>,
+    pub observaciones: Option<String>,
+    pub partidas: i32,
+    pub total_piezas: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PartidaRequisicionDetalle {
+    pub codigo_ean: i64,
+    pub tipo_producto: String,
+    pub titulo: String,
+    /// Lo que dice el documento original.
+    pub cantidad: i32,
+    /// Lo que confirmó el Vendedor (None mientras esté pendiente).
+    pub cantidad_recibida: Option<i32>,
+    pub id_mueble: i32,
+    pub mueble: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RequisicionDetalle {
+    #[serde(flatten)]
+    pub resumen: RequisicionResumen,
+    pub items: Vec<PartidaRequisicionDetalle>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PartidaRecepcion {
+    pub codigo_ean: i64,
+    pub cantidad_recibida: i32,
+    /// Mueble del piso de venta donde quedó el libro.
+    pub id_mueble: i32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RecepcionRequest {
+    pub items: Vec<PartidaRecepcion>,
+    pub observaciones: Option<String>,
+}

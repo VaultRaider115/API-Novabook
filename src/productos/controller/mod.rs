@@ -139,11 +139,18 @@ pub fn router(state: AppState) -> Router<AppState> {
             "/movimientos/revistas",
             post(movimiento::movimiento_bodega_tienda_revistas),
         )
-        .route("/requisiciones", post(movimiento::requisicion_salida_bodega))
+        .route(
+            "/requisiciones",
+            post(movimiento::requisicion_salida_bodega).get(movimiento::listar_requisiciones),
+        )
+        .route("/requisiciones/{folio}", get(movimiento::obtener_requisicion))
         // Títulos y editorial para armar la requisición de salida.
         .route("/existencias", get(inventario::consultar_existencias_vendedor))
         .route("/compras", post(compra::registrar_compra_bodega))
         .route("/compras", get(compra::listar_compras_bodega))
+        .route("/incidencias", get(compra::listar_incidencias_bodega))
+        .route("/incidencias/{id}", get(compra::obtener_incidencia_bodega))
+        .route("/incidencias/{id}/reposicion", post(compra::reponer_incidencia_bodega))
         .layer(middleware::from_fn(require_bodega))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -158,7 +165,15 @@ pub fn router(state: AppState) -> Router<AppState> {
             "/movimientos/revistas",
             post(movimiento::movimiento_tienda_bodega_revistas),
         )
-        .route("/requisiciones", post(movimiento::requisicion_entrada_vendedor))
+        .route(
+            "/requisiciones",
+            post(movimiento::requisicion_entrada_vendedor).get(movimiento::listar_requisiciones),
+        )
+        .route("/requisiciones/{folio}", get(movimiento::obtener_requisicion))
+        .route(
+            "/requisiciones/{folio}/recepcion",
+            post(movimiento::recibir_requisicion_vendedor),
+        )
         .route("/tickets/{id}", get(devolucion::consultar_ticket_vendedor))
         .route(
             "/inventarios",

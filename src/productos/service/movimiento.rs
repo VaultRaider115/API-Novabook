@@ -3,10 +3,11 @@ use crate::{
     error::AppError,
     productos::{
         model::{
-            PartidaRequisicion, RequisicionRequest, RequisicionResponse, TipoMovimiento,
+            FiltroRequisiciones, PartidaRequisicion, RecepcionRequest, RequisicionDetalle,
+            RequisicionRequest, RequisicionResponse, RequisicionResumen, TipoMovimiento,
             TipoProducto, TrasladoRequest, TrasladoResponse,
         },
-        repo::{MovimientoRepo, UBICACION_BODEGA, UBICACION_TIENDA},
+        repo::{MovimientoRepo, RecepcionRepo, UBICACION_BODEGA, UBICACION_TIENDA},
     },
 };
 
@@ -44,6 +45,45 @@ fn normalizar_partidas(entrada: Vec<PartidaRequisicion>) -> Result<Vec<PartidaRe
 }
 
 impl MovimientoService {
+    pub async fn listar_requisiciones(
+        pool: &DbPool,
+        filtro: FiltroRequisiciones,
+    ) -> Result<Vec<RequisicionResumen>, AppError> {
+        RecepcionRepo::listar(pool, &filtro).await
+    }
+
+    pub async fn obtener_requisicion(pool: &DbPool, folio: &str) -> Result<RequisicionDetalle, AppError> {
+        RecepcionRepo::obtener(pool, folio.trim()).await
+    }
+
+    /// Pasos 2 y 3: el Vendedor recibe la salida. Si lo recibido no coincide,
+    /// la requisición queda CORREGIDA (stock y movimientos ajustados) y se
+    /// reimprime con la respuesta; además registra el mueble de cada libro.
+    pub async fn recibir_requisicion(
+        pool: &DbPool,
+        actor_id: i64,
+        folio: &str,
+        req: RecepcionRequest,
+    ) -> Result<RequisicionDetalle, AppError> {
+        let folio = folio.trim();
+        if req.observaciones.as_deref().is_some_and(|o| o.chars().count() > 150) {
+            return Err(AppError::BadRequest("Las observaciones no pueden pasar de 150 caracteres".to_string()));
+        }
+        let (diferencias, acomodos) = RecepcionRepo::recibir(pool, folio, actor_id, &req).await?;
+
+        let mut detalle = if diferencias.is_empty() {
+            format!("Requisición {} recibida en piso sin diferencias", folio)
+        } else {
+            format!("Requisición {} corregida al recibir: {}", folio, diferencias.join(", "))
+        };
+        if !acomodos.is_empty() {
+            detalle.push_str(&format!(" · Mueble: {}", acomodos.join(", ")));
+        }
+        let _ = log_bitacora(pool, actor_id, "RECEPCIÓN DE REQUISICIÓN EN PISO", &detalle).await;
+
+        RecepcionRepo::obtener(pool, folio).await
+    }
+
     /// Requisición de varias partidas con folio. Bodega → Piso (salida) o
     /// Piso → Bodega (entrada); todo o nada.
     pub async fn registrar_requisicion(

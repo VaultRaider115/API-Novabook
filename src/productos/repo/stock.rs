@@ -158,3 +158,40 @@ pub async fn descontar_apartado(tx: &mut Tx<'_>, codigo_ean: i64, cantidad: i32)
     }
     Ok(quitar)
 }
+
+/// Piezas de un producto en un mueble concreto, bloqueando la fila.
+pub async fn en_mueble_bloqueado(tx: &mut Tx<'_>, codigo_ean: i64, id_mueble: i32) -> Result<i32, AppError> {
+    let fila = sqlx::query("SELECT cantidad FROM existencias WHERE codigo_ean = ? AND id_mueble = ? FOR UPDATE")
+        .bind(codigo_ean)
+        .bind(id_mueble)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(AppError::Database)?;
+    Ok(fila.map(|r| row_get_i32(&r, "cantidad")).unwrap_or(0))
+}
+
+/// Descuenta piezas de un mueble concreto. El llamador verifica que alcancen.
+pub async fn descontar_de_mueble(tx: &mut Tx<'_>, codigo_ean: i64, id_mueble: i32, cantidad: i32) -> Result<(), AppError> {
+    sqlx::query("UPDATE existencias SET cantidad = cantidad - ? WHERE codigo_ean = ? AND id_mueble = ? AND cantidad >= ?")
+        .bind(cantidad)
+        .bind(codigo_ean)
+        .bind(id_mueble)
+        .bind(cantidad)
+        .execute(&mut **tx)
+        .await
+        .map_err(AppError::Database)?;
+    Ok(())
+}
+
+/// Espacio libre de un mueble (`None` si no tiene capacidad definida).
+pub async fn libre_en_mueble(tx: &mut Tx<'_>, id_mueble: i32) -> Result<Option<i32>, AppError> {
+    let fila = sqlx::query(
+        "SELECT m.capacidad - COALESCE((SELECT SUM(e.cantidad) FROM existencias e WHERE e.id_mueble = m.id_mueble), 0) AS libre \
+         FROM mueble m WHERE m.id_mueble = ?",
+    )
+    .bind(id_mueble)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(AppError::Database)?;
+    Ok(crate::db::row_get_opt_i32(&fila, "libre"))
+}

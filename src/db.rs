@@ -41,16 +41,31 @@ pub fn url_sin_contrasena(url: &str) -> String {
 /// Revisa al arrancar que la base tenga las columnas que la API espera y, si
 /// falta alguna, indica qué script aplicar (no detiene el servidor).
 pub async fn verificar_esquema(pool: &DbPool) {
-    let pendientes = [(
-        "SELECT observaciones FROM devolucion LIMIT 0",
-        "devolucion.observaciones",
-        "migracion_observaciones_devolucion.sql",
-    )];
-    for (consulta, columna, script) in pendientes {
+    let pendientes = [
+        (
+            "SELECT observaciones FROM devolucion LIMIT 0",
+            "la columna devolucion.observaciones",
+            "migracion_observaciones_devolucion.sql",
+        ),
+        (
+            "SELECT 1 FROM devolucion_cliente LIMIT 0",
+            "la tabla devolucion_cliente",
+            "migracion_devolucion_cliente.sql",
+        ),
+        (
+            "SELECT 1 FROM inventario LIMIT 0",
+            "la tabla inventario",
+            "migracion_inventario_mensual.sql",
+        ),
+        (
+            "SELECT 1 FROM requisicion, incidencia_compra LIMIT 0",
+            "las tablas requisicion e incidencia_compra",
+            "migracion_recepcion_incidencias.sql",
+        ),
+    ];
+    for (consulta, que, script) in pendientes {
         if let Err(e) = sqlx::query(consulta).execute(pool).await {
-            eprintln!(
-                "[ESQUEMA] Falta la columna {columna}: aplica {script} a la base de datos. ({e})"
-            );
+            eprintln!("[ESQUEMA] Falta {que}: aplica {script} a la base de datos. ({e})");
         }
     }
 }
