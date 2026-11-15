@@ -7,6 +7,10 @@ pub struct ItemDevolucion {
     pub id_motivo: i32,
     pub sku: Option<i64>,
     pub titulo: String,
+    /// Segunda línea del acta (diseño 21): autores del libro o
+    /// "Edición mensual · No. 452" de la revista.
+    #[serde(default)]
+    pub descripcion: Option<String>,
     pub cantidad: i32,
     pub motivo: Option<String>,
 }

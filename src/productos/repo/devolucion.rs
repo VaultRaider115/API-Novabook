@@ -73,7 +73,16 @@ async fn cargar_items(
         SELECT dd.codigo_ean, dd.id_motivo, dd.cantidad,
                p.SKU AS sku, p.tipo_producto,
                COALESCE(l.nombre_libro, r.nombre_revista, 'Producto Desconocido') AS titulo,
-               m.nombre_motivo AS motivo
+               m.nombre_motivo AS motivo,
+               CASE WHEN l.codigo_ean IS NOT NULL THEN
+                   (SELECT GROUP_CONCAT(TRIM(CONCAT(a.nombre, ' ', a.apellidos))
+                                        ORDER BY a.apellidos SEPARATOR ', ')
+                    FROM autores_has_libros ah JOIN autores a ON a.id_autores = ah.id_autores
+                    WHERE ah.codigo_ean = dd.codigo_ean)
+               ELSE NULLIF(CONCAT_WS(' · ',
+                        CONCAT('Edición ', LOWER(NULLIF(TRIM(r.periodicidad), ''))),
+                        CONCAT('No. ', r.numero_edicion)), '')
+               END AS descripcion
         FROM detalle_devolucion dd
         JOIN productos p ON p.codigo_ean = dd.codigo_ean
         LEFT JOIN libros l ON l.codigo_ean = dd.codigo_ean
@@ -102,6 +111,7 @@ async fn cargar_items(
                 id_motivo: row_get_i32(&row, "id_motivo"),
                 sku: row_get_opt_i64(&row, "sku"),
                 titulo: row.get("titulo"),
+                descripcion: row.try_get("descripcion").ok().flatten(),
                 cantidad: row_get_i32(&row, "cantidad"),
                 motivo: row.get("motivo"),
             }

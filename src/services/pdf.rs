@@ -1,8 +1,8 @@
 //! Acta de Devolución a Proveedor en PDF (diseño docs/disenos/21.png).
 //!
 //! Se genera "a mano" (PDF 1.4) para no agregar dependencias: Helvetica y
-//! Helvetica-Bold estándar con WinAnsiEncoding (admite acentos y ñ), líneas
-//! y varias páginas cuando el detalle no cabe en una.
+//! Helvetica-Bold estándar con WinAnsiEncoding (admite acentos y ñ), Courier
+//! para los EAN, líneas y varias páginas cuando el detalle no cabe en una.
 
 use crate::productos::model::{Devolucion, TipoProducto};
 
@@ -68,11 +68,15 @@ impl PdfService {
                 y -= 7.0;
             }
             let base = y - 18.0;
-            doc.texto(COL_EAN + 4.0, base, Fuente::Normal, 9.0, 0.1, &item.codigo_ean.to_string());
+            doc.texto(COL_EAN + 4.0, base, Fuente::Mono, 9.0, 0.1, &item.codigo_ean.to_string());
             doc.texto(COL_TIPO, base, Fuente::Normal, 9.0, 0.1, tipo);
             doc.texto(COL_TITULO, base, Fuente::Negrita, 9.0, 0.1, &recortar(&item.titulo, 200.0, Fuente::Negrita, 9.0));
-            if let Some(sku) = item.sku {
-                doc.texto(COL_TITULO, base - 10.0, Fuente::Normal, 7.5, 0.45, &format!("SKU {}", sku));
+            // Autores o edición (diseño 21); si no hay, el SKU.
+            let sub = item.descripcion.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(str::to_string)
+                .or_else(|| item.sku.map(|sku| format!("SKU {}", sku)));
+            if let Some(sub) = sub {
+                doc.texto(COL_TITULO, base - 10.0, Fuente::Normal, 7.5, 0.45,
+                          &recortar(&sub, COL_CANT_DER - 30.0 - COL_TITULO, Fuente::Normal, 7.5));
             }
             doc.texto_der(COL_CANT_DER, base, Fuente::Normal, 9.0, 0.1, &item.cantidad.to_string());
             let motivo = item.motivo.as_deref().unwrap_or("N/D");
@@ -111,6 +115,7 @@ impl PdfService {
 enum Fuente {
     Normal,
     Negrita,
+    Mono,
 }
 
 #[derive(Default)]
@@ -132,7 +137,7 @@ impl Documento {
 
     /// Texto en (x, y) con tono de gris (0 = negro, 1 = blanco).
     fn texto(&mut self, x: f32, y: f32, f: Fuente, tam: f32, gris: f32, s: &str) {
-        let nombre = match f { Fuente::Normal => "F1", Fuente::Negrita => "F2" };
+        let nombre = match f { Fuente::Normal => "F1", Fuente::Negrita => "F2", Fuente::Mono => "F3" };
         let op = format!("BT {g:.2} g /{nombre} {tam:.1} Tf {x:.1} {y:.1} Td ({}) Tj ET\n", escapar(s), g = gris);
         self.actual().push_str(&op);
     }
@@ -156,18 +161,19 @@ impl Documento {
         }
         let n = self.paginas.len();
         // Objetos: 1 catálogo, 2 páginas, 3 Helvetica, 4 Helvetica-Bold,
-        // y por página i: (5 + 2i) página, (6 + 2i) contenido.
+        // 5 Courier y por página i: (6 + 2i) página, (7 + 2i) contenido.
         let mut objetos: Vec<Vec<u8>> = Vec::new();
         objetos.push(b"<< /Type /Catalog /Pages 2 0 R >>".to_vec());
-        let kids: Vec<String> = (0..n).map(|i| format!("{} 0 R", 5 + 2 * i)).collect();
+        let kids: Vec<String> = (0..n).map(|i| format!("{} 0 R", 6 + 2 * i)).collect();
         objetos.push(format!("<< /Type /Pages /Kids [{}] /Count {} >>", kids.join(" "), n).into_bytes());
         objetos.push(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>".to_vec());
         objetos.push(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>".to_vec());
+        objetos.push(b"<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>".to_vec());
         for (i, contenido) in self.paginas.iter().enumerate() {
             objetos.push(format!(
                 "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {ANCHO} {ALTO}] /Contents {} 0 R \
-                 /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>",
-                6 + 2 * i
+                 /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> >>",
+                7 + 2 * i
             ).into_bytes());
             let bytes = a_winansi(contenido);
             let mut obj = format!("<< /Length {} >>\nstream\n", bytes.len()).into_bytes();
@@ -219,22 +225,55 @@ fn a_winansi(s: &str) -> Vec<u8> {
         .collect()
 }
 
-/// Ancho aproximado de un texto en Helvetica (unidades de 1/1000 del tamaño).
-/// Basta para alinear a la derecha y recortar títulos.
+// Anchos de Helvetica y Helvetica-Bold (métricas AFM estándar) para los
+// caracteres 32..=126, en unidades de 1/1000 del tamaño de letra.
+#[rustfmt::skip]
+const ANCHOS_HELVETICA: [u16; 95] = [
+    278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+    556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
+    1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+    667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+    333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+    556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+];
+#[rustfmt::skip]
+const ANCHOS_HELVETICA_BOLD: [u16; 95] = [
+    278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278,
+    556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611,
+    975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778,
+    667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556,
+    333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,
+    611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
+];
+
+/// Letra base de una vocal acentuada o ñ (miden lo mismo que su base).
+fn sin_acento(c: char) -> char {
+    match c {
+        'á' | 'à' | 'ä' | 'â' => 'a', 'é' | 'è' | 'ë' | 'ê' => 'e', 'í' | 'ì' | 'ï' | 'î' => 'i',
+        'ó' | 'ò' | 'ö' | 'ô' => 'o', 'ú' | 'ù' | 'ü' | 'û' => 'u', 'ñ' => 'n',
+        'Á' | 'À' | 'Ä' | 'Â' => 'A', 'É' | 'È' | 'Ë' | 'Ê' => 'E', 'Í' | 'Ì' | 'Ï' | 'Î' => 'I',
+        'Ó' | 'Ò' | 'Ö' | 'Ô' => 'O', 'Ú' | 'Ù' | 'Ü' | 'Û' => 'U', 'Ñ' => 'N',
+        _ => c,
+    }
+}
+
+/// Ancho de un texto en puntos, para alinear a la derecha y recortar títulos.
 fn ancho(s: &str, f: Fuente, tam: f32) -> f32 {
+    let tabla = match f {
+        Fuente::Mono => return s.chars().count() as f32 * 600.0 * tam / 1000.0,
+        Fuente::Normal => &ANCHOS_HELVETICA,
+        Fuente::Negrita => &ANCHOS_HELVETICA_BOLD,
+    };
     let base: f32 = s
         .chars()
-        .map(|c| match c {
-            '0'..='9' | '#' | '$' | '_' => 556.0,
-            ' ' | '.' | ',' | ':' | ';' | 'i' | 'l' | 'j' | '\'' | '|' => 278.0,
-            '-' | '(' | ')' | 'r' | 't' | 'f' | 'I' => 333.0,
-            'm' | 'w' | 'M' | 'W' => 833.0,
-            'A'..='Z' | 'Á' | 'É' | 'Í' | 'Ó' | 'Ú' | 'Ñ' => 667.0,
+        .map(|c| match sin_acento(c) {
+            c @ ' '..='~' => tabla[c as usize - 32] as f32,
+            '·' => 278.0,
+            '—' => 1000.0,
             _ => 556.0,
         })
         .sum();
-    let factor = match f { Fuente::Normal => 1.0, Fuente::Negrita => 1.06 };
-    base * factor * tam / 1000.0
+    base * tam / 1000.0
 }
 
 fn recortar(s: &str, max: f32, f: Fuente, tam: f32) -> String {
@@ -292,6 +331,7 @@ mod tests {
                     id_motivo: 1,
                     sku: Some(884102),
                     titulo: "Orgullo y prejuicio (edición de colección)".into(),
+                    descripcion: Some("Jane Austen".into()),
                     cantidad: 1,
                     motivo: Some("Defecto de Imprenta".into()),
                 })
@@ -333,7 +373,16 @@ mod tests {
             assert!(pdf[off..].starts_with(format!("{} 0 obj", i + 1).as_bytes()), "objeto {}", i + 1);
             revisados += 1;
         }
-        assert_eq!(revisados, 6, "catálogo, páginas, 2 fuentes, 1 página y su contenido");
+        assert_eq!(revisados, 7, "catálogo, páginas, 3 fuentes, 1 página y su contenido");
+    }
+
+    #[test]
+    fn anchos_reales_de_helvetica() {
+        // "Lote" en Helvetica-Bold: L 611 + o 611 + t 333 + e 556 = 2111.
+        assert!((ancho("Lote", Fuente::Negrita, 10.0) - 21.11).abs() < 0.01);
+        // La acentuada mide lo mismo que su base.
+        assert_eq!(ancho("Devolución", Fuente::Normal, 9.0), ancho("Devolucion", Fuente::Normal, 9.0));
+        assert_eq!(ancho("9786073832014", Fuente::Mono, 10.0), 78.0);
     }
 
     #[test]
