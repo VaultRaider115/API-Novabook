@@ -162,4 +162,20 @@ impl UsuarioRepo {
 
         Ok(res.rows_affected() > 0)
     }
+pub async fn contar_activos_por_rol(pool: &DbPool, id_rol: i32) -> Result<i64, AppError> {
+        let row = sqlx::query(
+            r#"
+            SELECT COUNT(*) AS total
+            FROM usuarios
+            WHERE id_roles = ? AND estado = TRUE
+            "#,
+        )
+        .bind(id_rol)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::Database)?;
+
+        Ok(row_get_i64(&row, "total"))
+    }
+
 }

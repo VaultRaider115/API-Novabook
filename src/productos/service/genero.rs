@@ -15,8 +15,21 @@ impl GeneroService {
     }
 
     fn validar(req: &CrearGeneroRequest) -> Result<(), AppError> {
-        if req.genero_literario.trim().is_empty() {
-            return Err(AppError::BadRequest("El nombre del género es obligatorio".to_string()));
+        let nombre = req.genero_literario.trim();
+        if nombre.is_empty() {
+            return Err(AppError::BadRequest(
+                "El nombre del género es obligatorio".to_string(),
+            ));
+        }
+        if nombre.chars().count() > 45 {
+            return Err(AppError::BadRequest(
+                "El nombre del género no puede exceder 45 caracteres".to_string(),
+            ));
+        }
+        if nombre.chars().any(|c| c.is_ascii_digit()) {
+            return Err(AppError::BadRequest(
+                "El nombre del género no puede contener números".to_string(),
+            ));
         }
         Ok(())
     }
@@ -27,6 +40,15 @@ impl GeneroService {
         req: CrearGeneroRequest,
     ) -> Result<Genero, AppError> {
         Self::validar(&req)?;
+        let mut req = req;
+        req.genero_literario = req.genero_literario.trim().to_string();
+
+        if GeneroRepo::existe_por_nombre(pool, &req.genero_literario, None).await? {
+            return Err(AppError::Conflict(
+                "Ya existe un género registrado con ese nombre".to_string(),
+            ));
+        }
+
         let g = GeneroRepo::crear_genero(pool, &req).await?;
         let _ = log_bitacora(
             pool,
@@ -45,6 +67,15 @@ impl GeneroService {
         req: CrearGeneroRequest,
     ) -> Result<Genero, AppError> {
         Self::validar(&req)?;
+        let mut req = req;
+        req.genero_literario = req.genero_literario.trim().to_string();
+
+        if GeneroRepo::existe_por_nombre(pool, &req.genero_literario, Some(id)).await? {
+            return Err(AppError::Conflict(
+                "Ya existe otro género registrado con ese nombre".to_string(),
+            ));
+        }
+
         let g = GeneroRepo::actualizar_genero(pool, id, &req).await?;
         let _ = log_bitacora(
             pool,

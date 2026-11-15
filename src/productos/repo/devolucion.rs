@@ -279,7 +279,14 @@ impl DevolucionRepo {
             .map(str::trim)
             .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("todos"))
         {
-            builder.push(" AND d.estado = ").push_bind(estado);
+            let estado_norm = match estado.to_ascii_uppercase().as_str() {
+                "AUTORIZADO" | "ACEPTADO" => "APROBADO",
+                _ => estado,
+            };
+            builder
+                .push(" AND UPPER(d.estado) = UPPER(")
+                .push_bind(estado_norm)
+                .push(")");
         }
         if let Some(id_proveedor) = params.id_proveedor.filter(|id| *id > 0) {
             builder
