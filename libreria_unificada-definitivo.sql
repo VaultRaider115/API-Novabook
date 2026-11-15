@@ -30,6 +30,10 @@ PREPARE stmt FROM @drop_view_proveedor;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+DROP TABLE IF EXISTS `detalle_inventario`;
+DROP TABLE IF EXISTS `inventario`;
+DROP TABLE IF EXISTS `detalle_solicitud_editorial`;
+DROP TABLE IF EXISTS `solicitud_editorial`;
 DROP TABLE IF EXISTS `detalle_devolucion_cliente`;
 DROP TABLE IF EXISTS `devolucion_cliente`;
 DROP TABLE IF EXISTS `apartados`;
@@ -614,6 +618,65 @@ CREATE TABLE `detalle_devolucion` (
   CONSTRAINT `FK_DD_MOTIVO`     FOREIGN KEY (`id_motivo`)     REFERENCES `motivo` (`id_motivo`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 -- (sin datos: el backup y los seeds no traían detalle de las devoluciones 1 y 2)
+
+-- ============================================================================
+-- 8b. INVENTARIO MENSUAL Y SOLICITUDES DE EDITORIAL (diagrama, paso 7)
+-- ============================================================================
+CREATE TABLE `solicitud_editorial` (
+  `id_solicitud` BIGINT       NOT NULL AUTO_INCREMENT,
+  `id_proveedor` INT          NOT NULL,
+  `id_usuarios`  BIGINT       NOT NULL,                       -- quien la registró
+  `fecha`        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `referencia`   VARCHAR(150) NOT NULL,                       -- p. ej. asunto/fecha del correo
+  `estado`       VARCHAR(10)  NOT NULL DEFAULT 'ABIERTA',     -- ABIERTA | ATENDIDA
+  PRIMARY KEY (`id_solicitud`),
+  KEY `FK_SE_PROVEEDOR` (`id_proveedor`),
+  KEY `FK_SE_USUARIO` (`id_usuarios`),
+  CONSTRAINT `FK_SE_PROVEEDOR` FOREIGN KEY (`id_proveedor`) REFERENCES `proveedor` (`id_proveedor`),
+  CONSTRAINT `FK_SE_USUARIO`   FOREIGN KEY (`id_usuarios`)  REFERENCES `usuarios` (`id_usuarios`),
+  CONSTRAINT `CK_SE_ESTADO`    CHECK (`estado` IN ('ABIERTA', 'ATENDIDA'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `detalle_solicitud_editorial` (
+  `id_solicitud` BIGINT NOT NULL,
+  `codigo_ean`   BIGINT NOT NULL,
+  PRIMARY KEY (`id_solicitud`, `codigo_ean`),
+  KEY `FK_DSE_PRODUCTO` (`codigo_ean`),
+  CONSTRAINT `FK_DSE_SOLICITUD` FOREIGN KEY (`id_solicitud`) REFERENCES `solicitud_editorial` (`id_solicitud`) ON DELETE CASCADE,
+  CONSTRAINT `FK_DSE_PRODUCTO`  FOREIGN KEY (`codigo_ean`)   REFERENCES `productos` (`codigo_ean`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `inventario` (
+  `id_inventario`      BIGINT       NOT NULL AUTO_INCREMENT,
+  `id_usuarios`        BIGINT       NOT NULL,                 -- quien contó (Vendedor)
+  `fecha_inicio`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `fecha_cierre`       DATETIME     DEFAULT NULL,
+  `estado`             VARCHAR(10)  NOT NULL DEFAULT 'ABIERTO', -- ABIERTO | CERRADO | APROBADO | RECHAZADO
+  `dias_anejamiento`   INT          NOT NULL DEFAULT 90,       -- regla usada al cerrar
+  `id_usuario_revisa`  BIGINT       DEFAULT NULL,              -- Jefe que aprobó/rechazó
+  `fecha_revision`     DATETIME     DEFAULT NULL,
+  `observaciones`      VARCHAR(200) DEFAULT NULL,
+  PRIMARY KEY (`id_inventario`),
+  KEY `FK_INV_USUARIO` (`id_usuarios`),
+  KEY `FK_INV_REVISA` (`id_usuario_revisa`),
+  CONSTRAINT `FK_INV_USUARIO` FOREIGN KEY (`id_usuarios`)       REFERENCES `usuarios` (`id_usuarios`),
+  CONSTRAINT `FK_INV_REVISA`  FOREIGN KEY (`id_usuario_revisa`) REFERENCES `usuarios` (`id_usuarios`),
+  CONSTRAINT `CK_INV_ESTADO`  CHECK (`estado` IN ('ABIERTO', 'CERRADO', 'APROBADO', 'RECHAZADO'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `detalle_inventario` (
+  `id_inventario`     BIGINT      NOT NULL,
+  `codigo_ean`        BIGINT      NOT NULL,
+  `cantidad_contada`  INT         NOT NULL DEFAULT 0,
+  `stock_sistema`     INT         DEFAULT NULL,   -- piso al cerrar
+  `stock_apartado`    INT         NOT NULL DEFAULT 0,
+  `motivo_devolucion` VARCHAR(20) DEFAULT NULL,   -- ANEJAMIENTO | SOLICITUD_EDITORIAL
+  PRIMARY KEY (`id_inventario`, `codigo_ean`),
+  KEY `FK_DI_PRODUCTO` (`codigo_ean`),
+  CONSTRAINT `FK_DI_INVENTARIO` FOREIGN KEY (`id_inventario`) REFERENCES `inventario` (`id_inventario`) ON DELETE CASCADE,
+  CONSTRAINT `FK_DI_PRODUCTO`   FOREIGN KEY (`codigo_ean`)    REFERENCES `productos` (`codigo_ean`),
+  CONSTRAINT `CK_DI_CONTADA`    CHECK (`cantidad_contada` >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ============================================================================
 -- 9. VISTA: productos comprados por cliente (libros y revistas)

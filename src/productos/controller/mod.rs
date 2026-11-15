@@ -6,6 +6,7 @@ pub mod devolucion;
 pub mod editorial;
 pub mod genero;
 pub mod inventario;
+pub mod inventario_mensual;
 pub mod motivo;
 pub mod movimiento;
 pub mod mueble;
@@ -157,6 +158,13 @@ pub fn router(state: AppState) -> Router<AppState> {
         )
         .route("/requisiciones", post(movimiento::requisicion_entrada_vendedor))
         .route("/tickets/{id}", get(devolucion::consultar_ticket_vendedor))
+        .route(
+            "/inventarios",
+            post(inventario_mensual::abrir_inventario),
+        )
+        .route("/inventarios/actual", get(inventario_mensual::inventario_actual))
+        .route("/inventarios/{id}/conteos", put(inventario_mensual::registrar_conteo))
+        .route("/inventarios/{id}/cerrar", post(inventario_mensual::cerrar_inventario))
         .route("/devoluciones-cliente", post(devolucion::registrar_devolucion_cliente_vendedor))
         .route(
             "/devoluciones",
@@ -195,6 +203,14 @@ pub fn router(state: AppState) -> Router<AppState> {
             get(bitacora::consultar_movimiento_diario_jefe),
         )
         .route("/bitacora", get(bitacora::consultar_bitacora_jefe))
+        .route("/inventarios", get(inventario_mensual::listar_inventarios))
+        .route("/inventarios/{id}", get(inventario_mensual::obtener_inventario))
+        .route("/inventarios/{id}/revisar", put(inventario_mensual::revisar_inventario))
+        .route(
+            "/solicitudes-editorial",
+            get(inventario_mensual::listar_solicitudes).post(inventario_mensual::crear_solicitud),
+        )
+        .route("/solicitudes-editorial/{id}/atender", put(inventario_mensual::atender_solicitud))
         .route("/devoluciones/{id}/aprobar", put(devolucion::aprobar_devolucion_jefe))
         .layer(middleware::from_fn(require_jefe))
         .layer(middleware::from_fn_with_state(
