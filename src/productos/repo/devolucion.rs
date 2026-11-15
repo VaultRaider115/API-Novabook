@@ -27,14 +27,7 @@ const DEVOLUCION_SELECT: &str = r#"
            p.correo AS proveedor_correo,
            p.direccion AS proveedor_direccion,
            p.persona_contacto AS proveedor_contacto,
-           (SELECT SUBSTRING_INDEX(b.detalle, 'Observaciones: ', -1)
-              FROM bitacora b
-             WHERE b.accion LIKE 'RECHAZAR DEVOLUCI%'
-               -- Acepta el texto actual (Devolución #N rechazada. Observaciones: ...)
-               -- y el anterior (#N actualizada a estado RECHAZADO. Observaciones: ...)
-               AND b.detalle LIKE CONCAT('%#', d.id_devolucion, ' %Observaciones: %')
-             ORDER BY b.fecha_hora DESC
-             LIMIT 1) AS observaciones_rechazo
+           d.observaciones
     FROM devolucion d
     JOIN usuarios u ON d.id_usuarios = u.id_usuarios
     LEFT JOIN roles ur ON ur.id_roles = u.id_roles
@@ -66,10 +59,7 @@ fn map_devolucion(
         proveedor_contacto: row.get("proveedor_contacto"),
         tipo_producto,
         items,
-        observaciones_rechazo: row
-            .try_get::<Option<String>, _>("observaciones_rechazo")
-            .ok()
-            .flatten(),
+        observaciones: row.get("observaciones"),
     }
 }
 
@@ -330,6 +320,7 @@ impl DevolucionRepo {
         id_usuario_aprueba: i64,
         nuevo_estado: &str,
         aprobar: bool,
+        observaciones: Option<&str>,
     ) -> Result<(), AppError> {
         let mut tx = pool.begin().await.map_err(AppError::Database)?;
         let row = sqlx::query(
@@ -410,10 +401,11 @@ impl DevolucionRepo {
 
         let update = sqlx::query(
             "UPDATE devolucion SET estado = ?, id_usuario_aprueba = ?, \
-             fecha_aprobacion = CURRENT_TIMESTAMP WHERE id_devolucion = ?",
+             fecha_aprobacion = CURRENT_TIMESTAMP, observaciones = ? WHERE id_devolucion = ?",
         )
         .bind(nuevo_estado)
         .bind(id_usuario_aprueba)
+        .bind(observaciones)
         .bind(id)
         .execute(&mut *tx)
         .await

@@ -21,6 +21,40 @@ pub async fn create_pool(database_url: &str) -> Result<DbPool, AppError> {
         .map_err(AppError::Database)
 }
 
+/// Oculta la contraseña de una URL de conexión para poder registrarla en logs:
+/// "mysql://user:secreto@host:3306/Libreria" → "mysql://user:****@host:3306/Libreria".
+pub fn url_sin_contrasena(url: &str) -> String {
+    let Some(inicio) = url.find("://").map(|i| i + 3) else {
+        return url.to_string();
+    };
+    // Las credenciales terminan en la última '@' antes de la ruta.
+    let fin_autoridad = url[inicio..].find('/').map_or(url.len(), |i| inicio + i);
+    let Some(arroba) = url[inicio..fin_autoridad].rfind('@').map(|i| inicio + i) else {
+        return url.to_string();
+    };
+    match url[inicio..arroba].find(':') {
+        Some(dos_puntos) => format!("{}****{}", &url[..inicio + dos_puntos + 1], &url[arroba..]),
+        None => url.to_string(),
+    }
+}
+
+/// Revisa al arrancar que la base tenga las columnas que la API espera y, si
+/// falta alguna, indica qué script aplicar (no detiene el servidor).
+pub async fn verificar_esquema(pool: &DbPool) {
+    let pendientes = [(
+        "SELECT observaciones FROM devolucion LIMIT 0",
+        "devolucion.observaciones",
+        "migracion_observaciones_devolucion.sql",
+    )];
+    for (consulta, columna, script) in pendientes {
+        if let Err(e) = sqlx::query(consulta).execute(pool).await {
+            eprintln!(
+                "[ESQUEMA] Falta la columna {columna}: aplica {script} a la base de datos. ({e})"
+            );
+        }
+    }
+}
+
 /// Registra una acción en la tabla Bitacora para auditoría
 pub async fn log_bitacora(
     pool: &DbPool,
@@ -172,7 +206,23 @@ pub fn row_get_f64(row: &sqlx::mysql::MySqlRow, col: &str) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::recortar;
+    use super::{recortar, url_sin_contrasena};
+
+    #[test]
+    fn oculta_la_contrasena_de_la_url() {
+        assert_eq!(
+            url_sin_contrasena("mysql://root:s3cr3t@localhost:3306/Libreria"),
+            "mysql://root:****@localhost:3306/Libreria"
+        );
+        // Contraseña con '@' y ':' dentro
+        assert_eq!(
+            url_sin_contrasena("mysql://app:p@ss:w@db:3306/Libreria"),
+            "mysql://app:****@db:3306/Libreria"
+        );
+        // Sin contraseña o sin credenciales: se deja igual
+        assert_eq!(url_sin_contrasena("mysql://app@db/Libreria"), "mysql://app@db/Libreria");
+        assert_eq!(url_sin_contrasena("mysql://db:3306/Libreria"), "mysql://db:3306/Libreria");
+    }
 
     #[test]
     fn recorta_por_caracteres_sin_romper_acentos() {

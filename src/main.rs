@@ -24,8 +24,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = create_pool(&config.database_url).await?;
     println!(
         "Conexión a MySQL establecida exitosamente en: {}",
-        config.database_url
+        db::url_sin_contrasena(&config.database_url)
     );
+
+    // Avisa si la base no tiene migraciones pendientes aplicadas.
+    db::verificar_esquema(&pool).await;
 
     let state = AppState {
         pool,

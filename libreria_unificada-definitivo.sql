@@ -537,6 +537,7 @@ CREATE TABLE `devolucion` (
   `total_piezas`       INT         NOT NULL,
   `estado`             VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
   `fecha_aprobacion`   DATETIME    DEFAULT NULL,
+  `observaciones`      VARCHAR(200) DEFAULT NULL, -- nota del Jefe al aprobar o rechazar
   PRIMARY KEY (`id_devolucion`),
   KEY `FK_DEVOLUCION_PROVEEDOR` (`id_proveedor`),
   KEY `FK_DEVOLUCION_USUARIO` (`id_usuarios`),

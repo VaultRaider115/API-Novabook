@@ -32,9 +32,9 @@ pub struct Devolucion {
     pub proveedor_contacto: Option<String>,
     pub tipo_producto: TipoProducto,
     pub items: Vec<ItemDevolucion>,
-    /// Motivo que escribió el Jefe al rechazar (se guarda en la bitácora).
+    /// Nota del Jefe al aprobar o rechazar (columna devolucion.observaciones).
     #[serde(default)]
-    pub observaciones_rechazo: Option<String>,
+    pub observaciones: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

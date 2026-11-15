@@ -285,7 +285,7 @@ mod tests {
             proveedor_direccion: None,
             proveedor_contacto: None,
             tipo_producto: TipoProducto::Libro,
-            observaciones_rechazo: None,
+            observaciones: None,
             items: (0..n_items)
                 .map(|i| ItemDevolucion {
                     codigo_ean: 9780141439518 + i as i64,

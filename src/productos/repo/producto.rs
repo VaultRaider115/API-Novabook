@@ -599,6 +599,7 @@ impl ProductoRepo {
         id_usuario_aprueba: i64,
         nuevo_estado: &str,
         aprobar: bool,
+        observaciones: Option<&str>,
     ) -> Result<(), AppError> {
         DevolucionRepo::actualizar_estado_devolucion(
             pool,
@@ -606,6 +607,7 @@ impl ProductoRepo {
             id_usuario_aprueba,
             nuevo_estado,
             aprobar,
+            observaciones,
         )
         .await
     }

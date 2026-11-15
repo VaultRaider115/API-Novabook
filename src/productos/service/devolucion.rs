@@ -14,7 +14,7 @@ use crate::{
 
 pub struct DevolucionService;
 
-/// Máximo de las observaciones de aprobación/rechazo (caben en bitacora.detalle).
+/// Máximo de las observaciones de aprobación/rechazo (devolucion.observaciones VARCHAR(200)).
 const MAX_OBSERVACIONES: usize = 200;
 
 /// Máximo de piezas por hoja/lote de devolución a proveedor.
@@ -160,7 +160,7 @@ impl DevolucionService {
                 "Debes indicar las observaciones del rechazo".to_string(),
             ));
         }
-        // Las observaciones viven en bitacora.detalle (VARCHAR(255)) junto con el folio.
+        // Columna devolucion.observaciones VARCHAR(200).
         if notas.is_some_and(|n| n.chars().count() > MAX_OBSERVACIONES) {
             return Err(AppError::BadRequest(format!(
                 "Las observaciones no pueden exceder {} caracteres", MAX_OBSERVACIONES
@@ -184,6 +184,7 @@ impl DevolucionService {
             actor_id,
             nuevo_estado,
             req.aprobar,
+            notas,
         )
             .await?;
 
@@ -191,8 +192,6 @@ impl DevolucionService {
             pool,
             actor_id,
             if req.aprobar { "APROBAR DEVOLUCIÓN" } else { "RECHAZAR DEVOLUCIÓN" },
-            // Ojo: DEVOLUCION_SELECT extrae el motivo con el patrón
-            // "#<id> …Observaciones: <texto>"; mantenerlo si se cambia este texto.
             &match notas {
                 Some(n) => format!(
                     "Devolución #{} {}. Observaciones: {}",

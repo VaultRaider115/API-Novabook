@@ -250,7 +250,13 @@ fi
 
 # El Jefe aprueba y el vendedor descarga un PDF real
 curl -s -X PUT "$BASE_URL/jefe/devoluciones/$DEV_ID/aprobar" -H "Authorization: Bearer $TOKEN_JEFE" \
-  -H "Content-Type: application/json" -d '{"aprobar": true}' > /dev/null
+  -H "Content-Type: application/json" -d '{"aprobar": true, "notas": "Entregar el lunes"}' > /dev/null
+MIS_APR=$(curl -s "$BASE_URL/vendedor/devoluciones?estado=APROBADO" -H "Authorization: Bearer $TOKEN_VENDEDOR")
+if echo "$MIS_APR" | grep -q '"observaciones":"Entregar el lunes"'; then
+  echo "  ✓ La nota de la aprobación se guarda en devolucion.observaciones"
+else
+  echo "Error: no se guardó la nota de la aprobación: $(echo $MIS_APR | cut -c1-200)"; exit 1
+fi
 curl -s -o /tmp/devolucion_v2.pdf "$BASE_URL/vendedor/devoluciones/$DEV_ID/pdf/libros" -H "Authorization: Bearer $TOKEN_VENDEDOR"
 if head -c 4 /tmp/devolucion_v2.pdf | grep -q '%PDF'; then
   echo "  ✓ Acta PDF aprobada descargada ($(wc -c < /tmp/devolucion_v2.pdf) bytes)"
@@ -284,7 +290,7 @@ DEV_RECH=$(nueva_devolucion)
 curl -s -X PUT "$BASE_URL/jefe/devoluciones/$DEV_RECH/aprobar" -H "Authorization: Bearer $TOKEN_JEFE" \
   -H "Content-Type: application/json" -d '{"aprobar": false, "notas": "Faltan piezas del lote"}' > /dev/null
 MIS_RECH=$(curl -s "$BASE_URL/vendedor/devoluciones?estado=RECHAZADO" -H "Authorization: Bearer $TOKEN_VENDEDOR")
-if echo "$MIS_RECH" | grep -q '"observaciones_rechazo":"Faltan piezas del lote"'; then
+if echo "$MIS_RECH" | grep -q '"observaciones":"Faltan piezas del lote"'; then
   echo "  ✓ El vendedor ve el motivo del rechazo"
 else
   echo "Error: no se ve el motivo del rechazo: $(echo $MIS_RECH | cut -c1-200)"; exit 1
