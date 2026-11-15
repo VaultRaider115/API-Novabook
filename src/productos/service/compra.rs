@@ -21,6 +21,12 @@ impl CompraService {
             ));
         }
 
+        if req.factura.as_deref().is_some_and(|f| f.chars().count() > 30) {
+            return Err(AppError::BadRequest(
+                "El número de factura no puede exceder 30 caracteres".to_string(),
+            ));
+        }
+
         // Validar cada artículo y su EAN
         for item in &req.items {
             let tipo_detectado =

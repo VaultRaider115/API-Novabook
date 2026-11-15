@@ -95,6 +95,7 @@ pub struct Revista {
     pub codigo_ean: i64,
     pub id_mueble: i32,
     pub id_proveedor: i32,
+    pub id_editorial: i32,
     pub id_ubicacion: i32,
     pub nombre_revista: String,
     pub numero_edicion: Option<i32>,
@@ -117,7 +118,8 @@ pub struct RegistrarLibroRequest {
     pub id_proveedor: i32,
     pub nombre_libro: String,
     pub precio: f64,
-    pub cantidad: i32,
+    #[serde(default)]
+    pub cantidad: i32, // Opcional: el stock puede entrar después por Compras
     pub sku: Option<i64>,
     pub id_ubicacion: Option<i32>, // Default: 2 (Bodega)
     // Relación muchos a muchos con géneros
@@ -137,11 +139,14 @@ pub struct RegistrarRevistaRequest {
     pub codigo_ean: i64,
     pub id_mueble: i32,
     pub id_proveedor: i32,
+    #[serde(default)]
+    pub id_editorial: Option<i32>,
     pub nombre_revista: String,
     pub numero_edicion: Option<i32>,
     pub periodicidad: Option<String>,
     pub precio: f64,
-    pub cantidad: i32,
+    #[serde(default)]
+    pub cantidad: i32, // Opcional: el stock puede entrar después por Compras
     pub sku: Option<i64>,
     pub id_ubicacion: Option<i32>, // Default: 2 (Bodega)
     // Relación muchos a muchos con géneros

@@ -16,7 +16,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route(
             "/perfil",
             get(auth::perfil_handler).layer(middleware::from_fn_with_state(
-                state.config.clone(),
+                state.clone(),
                 auth_middleware,
             )),
         );
@@ -29,7 +29,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/{id}", delete(usuario::eliminar_usuario_handler))
         .layer(middleware::from_fn(require_gerente_o_jefe))
         .layer(middleware::from_fn_with_state(
-            state.config.clone(),
+            state.clone(),
             auth_middleware,
         ));
 

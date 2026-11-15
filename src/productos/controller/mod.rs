@@ -3,6 +3,7 @@ pub mod bitacora;
 pub mod bodega;
 pub mod compra;
 pub mod devolucion;
+pub mod editorial;
 pub mod genero;
 pub mod inventario;
 pub mod motivo;
@@ -16,6 +17,7 @@ pub use autor::*;
 pub use bitacora::*;
 pub use compra::*;
 pub use devolucion::*;
+pub use editorial::*;
 pub use genero::*;
 pub use inventario::*;
 pub use motivo::*;
@@ -68,6 +70,17 @@ pub fn router(state: AppState) -> Router<AppState> {
                 .layer(escritura.clone()),
         )
         .route(
+            "/editoriales",
+            get(editorial::listar_editoriales_handler)
+                .merge(post(editorial::crear_editorial_handler).layer(escritura.clone())),
+        )
+        .route(
+            "/editoriales/{id}",
+            put(editorial::actualizar_editorial_handler)
+                .delete(editorial::eliminar_editorial_handler)
+                .layer(escritura.clone()),
+        )
+        .route(
             "/muebles",
             get(mueble::listar_muebles_handler)
                 .merge(post(mueble::crear_mueble_handler).layer(escritura.clone())),
@@ -107,7 +120,7 @@ pub fn router(state: AppState) -> Router<AppState> {
             delete(proveedor::eliminar_proveedor_handler).layer(middleware::from_fn(require_bodega_o_gerente)),
         )
         .layer(middleware::from_fn_with_state(
-            state.config.clone(),
+            state.clone(),
             auth_middleware,
         ));
 
@@ -123,7 +136,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/compras", get(compra::listar_compras_bodega))
         .layer(middleware::from_fn(require_bodega))
         .layer(middleware::from_fn_with_state(
-            state.config.clone(),
+            state.clone(),
             auth_middleware,
         ));
 
@@ -146,7 +159,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         )
         .layer(middleware::from_fn(require_vendedor))
         .layer(middleware::from_fn_with_state(
-            state.config.clone(),
+            state.clone(),
             auth_middleware,
         ));
 
@@ -167,10 +180,11 @@ pub fn router(state: AppState) -> Router<AppState> {
             "/movimientos/diarios",
             get(bitacora::consultar_movimiento_diario_jefe),
         )
+        .route("/bitacora", get(bitacora::consultar_bitacora_jefe))
         .route("/devoluciones/{id}/aprobar", put(devolucion::aprobar_devolucion_jefe))
         .layer(middleware::from_fn(require_jefe))
         .layer(middleware::from_fn_with_state(
-            state.config.clone(),
+            state.clone(),
             auth_middleware,
         ));
 

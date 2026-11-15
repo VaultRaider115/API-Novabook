@@ -12,6 +12,8 @@ pub struct DevolucionRepo;
 
 const DEVOLUCION_SELECT: &str = r#"
     SELECT d.id_devolucion,
+           CONCAT('DEV-', YEAR(d.fecha_solicitud), '-', d.id_devolucion) AS folio,
+           ur.nombre_rol AS solicitante_rol,
            DATE_FORMAT(d.fecha_solicitud, '%Y-%m-%d') AS fecha,
            d.total_piezas,
            d.estado,
@@ -27,6 +29,7 @@ const DEVOLUCION_SELECT: &str = r#"
            p.persona_contacto AS proveedor_contacto
     FROM devolucion d
     JOIN usuarios u ON d.id_usuarios = u.id_usuarios
+    LEFT JOIN roles ur ON ur.id_roles = u.id_roles
     LEFT JOIN usuarios ap ON d.id_usuario_aprueba = ap.id_usuarios
     JOIN proveedor p ON d.id_proveedor = p.id_proveedor
 "#;
@@ -38,6 +41,8 @@ fn map_devolucion(
 ) -> Devolucion {
     Devolucion {
         id_devolucion: row_get_i64(row, "id_devolucion"),
+        folio: row.get("folio"),
+        solicitante_rol: row.try_get::<Option<String>, _>("solicitante_rol").ok().flatten(),
         fecha: row.get("fecha"),
         total_piezas: row_get_i32(row, "total_piezas"),
         estado: row.get("estado"),
@@ -181,6 +186,29 @@ impl DevolucionRepo {
                     "El producto {} no es de tipo {}",
                     item.codigo_ean,
                     tipo_producto.as_str()
+                )));
+            }
+
+            // La mercancía a devolver debe existir en bodega (la baja real ocurre al aprobar)
+            let en_bodega: i64 = sqlx::query(
+                "SELECT COALESCE(SUM(e.cantidad), 0) AS t FROM existencias e \
+                 JOIN mueble m ON m.id_mueble = e.id_mueble \
+                 WHERE e.codigo_ean = ? AND m.id_ubicacion = 2",
+            )
+            .bind(item.codigo_ean)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(AppError::Database)
+            .map(|r| row_get_i64(&r, "t"))?;
+            let solicitado: i32 = items
+                .iter()
+                .filter(|i| i.codigo_ean == item.codigo_ean)
+                .map(|i| i.cantidad)
+                .sum();
+            if en_bodega < solicitado as i64 {
+                return Err(AppError::BadRequest(format!(
+                    "Stock insuficiente en bodega para EAN {}. Disponible: {}, solicitado: {}",
+                    item.codigo_ean, en_bodega, solicitado
                 )));
             }
 

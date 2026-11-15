@@ -41,9 +41,9 @@ impl ProductoService {
             )));
         }
 
-        if req.cantidad <= 0 {
+        if req.cantidad < 0 {
             return Err(AppError::BadRequest(
-                "La cantidad debe ser mayor a 0".to_string(),
+                "La cantidad no puede ser negativa".to_string(),
             ));
         }
         if req.precio < 0.0 {
@@ -93,9 +93,9 @@ impl ProductoService {
             )));
         }
 
-        if req.cantidad <= 0 {
+        if req.cantidad < 0 {
             return Err(AppError::BadRequest(
-                "La cantidad debe ser mayor a 0".to_string(),
+                "La cantidad no puede ser negativa".to_string(),
             ));
         }
         if req.precio < 0.0 {

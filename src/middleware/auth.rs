@@ -8,7 +8,7 @@ use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode}
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
-    config::Config,
+    db::AppState,
     error::AppError,
     usuarios::model::{Claims, RolEnum},
 };
@@ -58,7 +58,7 @@ pub fn verify_jwt(token: &str, secret: &str) -> Result<Claims, AppError> {
 
 /// Middleware que extrae el token Bearer, valida el JWT e inyecta Claims en Request Extensions
 pub async fn auth_middleware(
-    State(config): State<Config>,
+    State(state): State<AppState>,
     mut req: Request,
     next: Next,
 ) -> Result<Response, AppError> {
@@ -78,7 +78,21 @@ pub async fn auth_middleware(
         ));
     };
 
-    let claims = verify_jwt(token, &config.jwt_secret)?;
+    let claims = verify_jwt(token, &state.config.jwt_secret)?;
+
+    // Un usuario dado de baja pierde el acceso de inmediato, aunque su token no haya expirado.
+    let activo = sqlx::query("SELECT estado FROM usuarios WHERE id_usuarios = ?")
+        .bind(claims.id_usuario)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(AppError::Database)?
+        .map(|r| sqlx::Row::get::<bool, _>(&r, "estado"));
+    if activo != Some(true) {
+        return Err(AppError::Unauthorized(
+            "Usuario inactivo o inexistente. Inicia sesión nuevamente".to_string(),
+        ));
+    }
+
     req.extensions_mut().insert(claims);
 
     Ok(next.run(req).await)

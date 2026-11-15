@@ -35,11 +35,17 @@ pub async fn crear_devolucion_vendedor(
 
 pub async fn generar_pdf_libros_vendedor(
     State(state): State<AppState>,
-    Extension(_claims): Extension<Claims>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
-    let (pdf_bytes, filename) =
-        DevolucionService::generar_pdf_devolucion(&state.pool, id, TipoProducto::Libro).await?;
+    let (pdf_bytes, filename) = DevolucionService::generar_pdf_devolucion(
+        &state.pool,
+        claims.id_usuario,
+        claims.rol,
+        id,
+        TipoProducto::Libro,
+    )
+    .await?;
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -57,11 +63,17 @@ pub async fn generar_pdf_libros_vendedor(
 
 pub async fn generar_pdf_revistas_vendedor(
     State(state): State<AppState>,
-    Extension(_claims): Extension<Claims>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
-    let (pdf_bytes, filename) =
-        DevolucionService::generar_pdf_devolucion(&state.pool, id, TipoProducto::Revista).await?;
+    let (pdf_bytes, filename) = DevolucionService::generar_pdf_devolucion(
+        &state.pool,
+        claims.id_usuario,
+        claims.rol,
+        id,
+        TipoProducto::Revista,
+    )
+    .await?;
 
     let mut headers = HeaderMap::new();
     headers.insert(

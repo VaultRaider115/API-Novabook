@@ -14,6 +14,9 @@ pub struct ItemDevolucion {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Devolucion {
     pub id_devolucion: i64,
+    /// Folio visible, p. ej. "DEV-2026-7"
+    pub folio: String,
+    pub solicitante_rol: Option<String>,
     pub fecha: String,
     pub total_piezas: i32,
     pub estado: String,

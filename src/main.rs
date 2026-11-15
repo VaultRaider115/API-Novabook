@@ -6,14 +6,13 @@ pub mod productos;
 pub mod services;
 pub mod usuarios;
 
-use axum::{Router, middleware::from_fn_with_state};
+use axum::Router;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 
 use crate::{
     config::Config,
     db::{AppState, create_pool},
-    middleware::audit_middleware,
 };
 
 #[tokio::main]
@@ -45,10 +44,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .merge(usuarios::controller::router(state.clone()))
         .merge(productos::controller::router(state.clone()))
         .layer(cors)
-        .layer(from_fn_with_state(
-            state.clone(),
-            audit_middleware,
-        ))
+        // Sin auditoría automática por petición: la bitácora solo registra eventos de negocio
+        // y de acceso, que cada servicio escribe explícitamente.
         .with_state(state);
 
     let addr = SocketAddr::new(

@@ -9,9 +9,13 @@ use crate::{
         repo::DevolucionRepo,
     },
     services::PdfService,
+    usuarios::model::RolEnum,
 };
 
 pub struct DevolucionService;
+
+/// Máximo de piezas por hoja/lote de devolución a proveedor.
+pub const LIMITE_PIEZAS_DEVOLUCION: i32 = 60;
 
 impl DevolucionService {
     pub async fn crear_devolucion(
@@ -32,6 +36,14 @@ impl DevolucionService {
                     "Cada artículo debe tener EAN, cantidad e id_motivo válidos".to_string(),
                 ));
             }
+        }
+
+        let total: i32 = req.items.iter().map(|i| i.cantidad).sum();
+        if total > LIMITE_PIEZAS_DEVOLUCION {
+            return Err(AppError::BadRequest(format!(
+                "Una devolución no puede exceder {} piezas (solicitadas: {})",
+                LIMITE_PIEZAS_DEVOLUCION, total
+            )));
         }
 
         let id_devolucion = DevolucionRepo::registrar_devolucion(
@@ -70,6 +82,8 @@ impl DevolucionService {
 
     pub async fn generar_pdf_devolucion(
         pool: &DbPool,
+        actor_id: i64,
+        actor_rol: RolEnum,
         id_devolucion: i64,
         tipo: TipoProducto,
     ) -> Result<(Vec<u8>, String), AppError> {
@@ -78,6 +92,20 @@ impl DevolucionService {
             .ok_or_else(|| {
                 AppError::NotFound(format!("Devolución #{} no encontrada", id_devolucion))
             })?;
+
+        // El acta solo existe una vez aprobada y la ve su solicitante o la jefatura/gerencia.
+        if !devolucion.estado.eq_ignore_ascii_case("APROBADO") {
+            return Err(AppError::Conflict(format!(
+                "El acta de la devolución #{} solo está disponible cuando está aprobada (estado: {})",
+                id_devolucion, devolucion.estado
+            )));
+        }
+        let privilegiado = matches!(actor_rol, RolEnum::JefeDepartamento | RolEnum::Gerente);
+        if !privilegiado && devolucion.id_usuarios != actor_id {
+            return Err(AppError::Forbidden(
+                "Solo el solicitante o la jefatura pueden descargar esta acta".to_string(),
+            ));
+        }
 
         let pdf_bytes = PdfService::generar_pdf_devolucion(&devolucion, tipo);
         let filename = format!(
@@ -109,6 +137,13 @@ impl DevolucionService {
                 AppError::NotFound(format!("Devolución #{} no encontrada", id_devolucion))
             })?;
 
+        let notas = req.notas.as_deref().map(str::trim).filter(|n| !n.is_empty());
+        if !req.aprobar && notas.is_none() {
+            return Err(AppError::BadRequest(
+                "Debes indicar las observaciones del rechazo".to_string(),
+            ));
+        }
+
         let nuevo_estado = if req.aprobar {
             "APROBADO"
         } else {
@@ -132,11 +167,17 @@ impl DevolucionService {
         let _ = log_bitacora(
             pool,
             actor_id,
-            "APROBAR DEVOLUCIÓN",
-            &format!(
-                "Devolución #{} actualizada a estado '{}'",
-                id_devolucion, nuevo_estado
-            ),
+            if req.aprobar { "APROBAR DEVOLUCIÓN" } else { "RECHAZAR DEVOLUCIÓN" },
+            &match notas {
+                Some(n) => format!(
+                    "Devolución #{} actualizada a estado '{}'. Observaciones: {}",
+                    id_devolucion, nuevo_estado, n
+                ),
+                None => format!(
+                    "Devolución #{} actualizada a estado '{}'",
+                    id_devolucion, nuevo_estado
+                ),
+            },
         )
         .await;
 

@@ -178,8 +178,14 @@ impl UsuarioService {
     pub async fn crear_usuario(
         pool: &DbPool,
         actor_id: i64,
+        actor_rol: RolEnum,
         req: CrearUsuarioRequest,
     ) -> Result<UsuarioDto, AppError> {
+        if actor_rol != RolEnum::Gerente {
+            return Err(AppError::Forbidden(
+                "Solo el Gerente puede dar de alta usuarios y asignar roles".to_string(),
+            ));
+        }
         if req.id_usuarios <= 0 {
             return Err(AppError::BadRequest(
                 "ID de usuario debe ser mayor a 0".to_string(),
@@ -240,12 +246,27 @@ impl UsuarioService {
     pub async fn actualizar_usuario(
         pool: &DbPool,
         actor_id: i64,
+        actor_rol: RolEnum,
         id: i64,
         req: ActualizarUsuarioRequest,
     ) -> Result<UsuarioDto, AppError> {
         let actual = UsuarioRepo::buscar_por_id(pool, id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Usuario #{} no encontrado", id)))?;
+
+        if actor_rol != RolEnum::Gerente {
+            // El Jefe puede editar datos de cuentas operativas, pero no roles ni cuentas de Gerente.
+            if actual.id_roles == RolEnum::Gerente as i32 {
+                return Err(AppError::Forbidden(
+                    "Solo el Gerente puede modificar una cuenta de Gerente".to_string(),
+                ));
+            }
+            if req.id_roles.is_some_and(|r| r != actual.id_roles) {
+                return Err(AppError::Forbidden(
+                    "Solo el Gerente puede asignar o cambiar roles".to_string(),
+                ));
+            }
+        }
 
         if let Some(r) = req.id_roles
             && RolEnum::from_id(r).is_none() {
@@ -294,10 +315,23 @@ impl UsuarioService {
         Ok(actualizado.into())
     }
 
-    pub async fn eliminar_usuario(pool: &DbPool, actor_id: i64, id: i64) -> Result<(), AppError> {
+    pub async fn eliminar_usuario(
+        pool: &DbPool,
+        actor_id: i64,
+        actor_rol: RolEnum,
+        id: i64,
+    ) -> Result<(), AppError> {
         if id == actor_id {
             return Err(AppError::BadRequest(
                 "No puedes eliminar tu propio usuario".to_string(),
+            ));
+        }
+        if actor_rol != RolEnum::Gerente
+            && let Some(objetivo) = UsuarioRepo::buscar_por_id(pool, id).await?
+            && objetivo.id_roles == RolEnum::Gerente as i32
+        {
+            return Err(AppError::Forbidden(
+                "Solo el Gerente puede dar de baja una cuenta de Gerente".to_string(),
             ));
         }
 
