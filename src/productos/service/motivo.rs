@@ -15,10 +15,37 @@ impl MotivoService {
     }
 
     fn validar(req: &CrearMotivoRequest) -> Result<(), AppError> {
-        if req.nombre_motivo.trim().is_empty() {
+        let nombre = req.nombre_motivo.trim();
+        if nombre.is_empty() {
             return Err(AppError::BadRequest("El motivo es obligatorio".to_string()));
         }
+        if nombre.chars().count() > 60 {
+            return Err(AppError::BadRequest(
+                "El nombre del motivo no puede exceder 60 caracteres".to_string(),
+            ));
+        }
+        if nombre.chars().any(|c| c.is_ascii_digit()) {
+            return Err(AppError::BadRequest(
+                "El nombre del motivo no puede contener números".to_string(),
+            ));
+        }
+        if let Some(desc) = req.descripcion.as_deref()
+            && desc.trim().chars().count() > 255
+        {
+            return Err(AppError::BadRequest(
+                "La descripción no puede exceder 255 caracteres".to_string(),
+            ));
+        }
         Ok(())
+    }
+
+    fn normalizar(mut req: CrearMotivoRequest) -> CrearMotivoRequest {
+        req.nombre_motivo = req.nombre_motivo.trim().to_string();
+        req.descripcion = req
+            .descripcion
+            .map(|d| d.trim().to_string())
+            .filter(|d| !d.is_empty());
+        req
     }
 
     pub async fn crear_motivo(
@@ -27,6 +54,14 @@ impl MotivoService {
         req: CrearMotivoRequest,
     ) -> Result<Motivo, AppError> {
         Self::validar(&req)?;
+        let req = Self::normalizar(req);
+
+        if MotivoRepo::existe_por_nombre(pool, &req.nombre_motivo, None).await? {
+            return Err(AppError::Conflict(
+                "Ya existe un motivo registrado con ese nombre".to_string(),
+            ));
+        }
+
         let m = MotivoRepo::crear_motivo(pool, &req).await?;
         let _ = log_bitacora(
             pool,
@@ -45,6 +80,14 @@ impl MotivoService {
         req: CrearMotivoRequest,
     ) -> Result<Motivo, AppError> {
         Self::validar(&req)?;
+        let req = Self::normalizar(req);
+
+        if MotivoRepo::existe_por_nombre(pool, &req.nombre_motivo, Some(id)).await? {
+            return Err(AppError::Conflict(
+                "Ya existe otro motivo registrado con ese nombre".to_string(),
+            ));
+        }
+
         let m = MotivoRepo::actualizar_motivo(pool, id, &req).await?;
         let _ = log_bitacora(
             pool,

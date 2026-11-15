@@ -29,27 +29,85 @@ impl MuebleRepo {
              m.nombre_mueble, m.capacidad, \
              COALESCE((SELECT SUM(e.cantidad) FROM existencias e WHERE e.id_mueble = m.id_mueble), 0) AS capacidad_actual, \
              m.descripcion, g.genero_literario \
-             FROM mueble m JOIN genero g ON g.id_genero = m.id_genero ORDER BY m.id_Mueble ASC",
+             FROM mueble m JOIN genero g ON g.id_genero = m.id_genero ORDER BY m.id_mueble ASC",
         )
-            .fetch_all(pool)
-            .await
-            .map_err(AppError::Database)?;
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)?;
         Ok(rows.iter().map(mapear).collect())
     }
 
-    async fn buscar_mueble(pool: &DbPool, id: i32) -> Result<Option<Mueble>, AppError> {
+    pub async fn buscar_mueble(pool: &DbPool, id: i32) -> Result<Option<Mueble>, AppError> {
         let row = sqlx::query(
             "SELECT m.id_mueble, m.id_genero, m.id_ubicacion, m.codigo_mueble, \
              m.nombre_mueble, m.capacidad, \
              COALESCE((SELECT SUM(e.cantidad) FROM existencias e WHERE e.id_mueble = m.id_mueble), 0) AS capacidad_actual, \
              m.descripcion, g.genero_literario \
-             FROM mueble m JOIN genero g ON g.id_genero = m.id_genero WHERE m.id_Mueble = ?",
+             FROM mueble m JOIN genero g ON g.id_genero = m.id_genero WHERE m.id_mueble = ?",
         )
-            .bind(id)
-            .fetch_optional(pool)
-            .await
-            .map_err(AppError::Database)?;
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)?;
         Ok(row.as_ref().map(mapear))
+    }
+
+    pub async fn existe_codigo(
+        pool: &DbPool,
+        codigo: &str,
+        excluir_id: Option<i32>,
+    ) -> Result<bool, AppError> {
+        let row = match excluir_id {
+            Some(id) => {
+                sqlx::query(
+                    "SELECT id_mueble FROM mueble WHERE LOWER(TRIM(codigo_mueble)) = LOWER(?) AND id_mueble <> ? LIMIT 1",
+                )
+                .bind(codigo.trim())
+                .bind(id)
+                .fetch_optional(pool)
+                .await
+                .map_err(AppError::Database)?
+            }
+            None => {
+                sqlx::query(
+                    "SELECT id_mueble FROM mueble WHERE LOWER(TRIM(codigo_mueble)) = LOWER(?) LIMIT 1",
+                )
+                .bind(codigo.trim())
+                .fetch_optional(pool)
+                .await
+                .map_err(AppError::Database)?
+            }
+        };
+        Ok(row.is_some())
+    }
+
+    pub async fn existe_nombre(
+        pool: &DbPool,
+        nombre: &str,
+        excluir_id: Option<i32>,
+    ) -> Result<bool, AppError> {
+        let row = match excluir_id {
+            Some(id) => {
+                sqlx::query(
+                    "SELECT id_mueble FROM mueble WHERE LOWER(TRIM(nombre_mueble)) = LOWER(?) AND id_mueble <> ? LIMIT 1",
+                )
+                .bind(nombre.trim())
+                .bind(id)
+                .fetch_optional(pool)
+                .await
+                .map_err(AppError::Database)?
+            }
+            None => {
+                sqlx::query(
+                    "SELECT id_mueble FROM mueble WHERE LOWER(TRIM(nombre_mueble)) = LOWER(?) LIMIT 1",
+                )
+                .bind(nombre.trim())
+                .fetch_optional(pool)
+                .await
+                .map_err(AppError::Database)?
+            }
+        };
+        Ok(row.is_some())
     }
 
     async fn validar_genero(pool: &DbPool, id_genero: i32) -> Result<(), AppError> {
@@ -59,7 +117,10 @@ impl MuebleRepo {
             .await
             .map_err(AppError::Database)?;
         if existe.is_none() {
-            return Err(AppError::BadRequest(format!("El género con ID {} no existe", id_genero)));
+            return Err(AppError::BadRequest(format!(
+                "El género con ID {} no existe",
+                id_genero
+            )));
         }
         Ok(())
     }
@@ -70,15 +131,15 @@ impl MuebleRepo {
             "INSERT INTO mueble (id_genero, id_ubicacion, codigo_mueble, nombre_mueble, capacidad, descripcion) \
              VALUES (?, ?, ?, ?, ?, ?)",
         )
-            .bind(req.id_genero)
-            .bind(req.id_ubicacion)
-            .bind(&req.codigo_mueble)
-            .bind(&req.nombre_mueble)
-            .bind(req.capacidad)
-            .bind(&req.descripcion)
-            .execute(pool)
-            .await
-            .map_err(AppError::Database)?;
+        .bind(req.id_genero)
+        .bind(req.id_ubicacion)
+        .bind(&req.codigo_mueble)
+        .bind(&req.nombre_mueble)
+        .bind(req.capacidad)
+        .bind(&req.descripcion)
+        .execute(pool)
+        .await
+        .map_err(AppError::Database)?;
 
         let id = res.last_insert_id() as i32;
         Self::buscar_mueble(pool, id)
@@ -96,19 +157,22 @@ impl MuebleRepo {
             "UPDATE mueble SET id_genero = ?, id_ubicacion = ?, codigo_mueble = ?, \
              nombre_mueble = ?, capacidad = ?, descripcion = ? WHERE id_mueble = ?",
         )
-            .bind(req.id_genero)
-            .bind(req.id_ubicacion)
-            .bind(&req.codigo_mueble)
-            .bind(&req.nombre_mueble)
-            .bind(req.capacidad)
-            .bind(&req.descripcion)
-            .bind(id)
-            .execute(pool)
-            .await
-            .map_err(AppError::Database)?;
+        .bind(req.id_genero)
+        .bind(req.id_ubicacion)
+        .bind(&req.codigo_mueble)
+        .bind(&req.nombre_mueble)
+        .bind(req.capacidad)
+        .bind(&req.descripcion)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(AppError::Database)?;
 
         if res.rows_affected() == 0 {
-            return Err(AppError::NotFound(format!("Mueble con ID {} no encontrado", id)));
+            return Err(AppError::NotFound(format!(
+                "Mueble con ID {} no encontrado",
+                id
+            )));
         }
         Self::buscar_mueble(pool, id)
             .await?
@@ -117,20 +181,26 @@ impl MuebleRepo {
 
     pub async fn eliminar_mueble(pool: &DbPool, id: i32) -> Result<(), AppError> {
         let row = sqlx::query(
-            "SELECT COUNT(*) AS cant FROM existencias WHERE id_mueble = ?",
+            "SELECT CAST(COALESCE(SUM(cantidad), 0) AS SIGNED) AS total_piezas FROM existencias WHERE id_mueble = ?",
         )
         .bind(id)
         .fetch_one(pool)
         .await
         .map_err(AppError::Database)?;
 
-        let cant = row_get_i64(&row, "cant");
-        if cant > 0 {
+        let total_piezas = row_get_i64(&row, "total_piezas");
+        if total_piezas > 0 {
             return Err(AppError::BadRequest(format!(
-                "No es posible eliminar el mueble (ID {}): tiene {} registro(s) de libros/revistas asignados.",
-                id, cant
+                "No es posible eliminar el mueble (ID {}): todavía tiene {} pieza(s) almacenadas.",
+                id, total_piezas
             )));
         }
+
+        sqlx::query("DELETE FROM existencias WHERE id_mueble = ? AND cantidad = 0")
+            .bind(id)
+            .execute(pool)
+            .await
+            .map_err(AppError::Database)?;
 
         let res = sqlx::query("DELETE FROM mueble WHERE id_mueble = ?")
             .bind(id)
@@ -139,7 +209,10 @@ impl MuebleRepo {
             .map_err(AppError::Database)?;
 
         if res.rows_affected() == 0 {
-            return Err(AppError::NotFound(format!("Mueble con ID {} no encontrado", id)));
+            return Err(AppError::NotFound(format!(
+                "Mueble con ID {} no encontrado",
+                id
+            )));
         }
         Ok(())
     }
