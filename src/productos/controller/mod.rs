@@ -35,7 +35,8 @@ use axum::{
 use crate::{
     db::AppState,
     middleware::{
-        auth_middleware, require_bodega, require_jefe, require_jefe_o_bodega, require_vendedor,
+        auth_middleware, require_bodega, require_gerente, require_jefe, require_jefe_o_bodega,
+        require_vendedor,
     },
 };
 
@@ -199,8 +200,30 @@ pub fn router(state: AppState) -> Router<AppState> {
             auth_middleware,
         ));
 
+    // Gerente: consulta el historial de devoluciones y descarga actas aprobadas.
+    // La aprobación es solo del Jefe (diagrama de procesos, paso 9).
+    let gerente_routes = Router::new()
+        .route(
+            "/devoluciones/historial",
+            get(devolucion::consultar_historial_devoluciones_jefe),
+        )
+        .route(
+            "/devoluciones/{id}/pdf/libros",
+            get(devolucion::generar_pdf_libros_vendedor),
+        )
+        .route(
+            "/devoluciones/{id}/pdf/revistas",
+            get(devolucion::generar_pdf_revistas_vendedor),
+        )
+        .layer(middleware::from_fn(require_gerente))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ));
+
     Router::new()
         .nest("/api", catalogos_routes)
+        .nest("/api/gerente", gerente_routes)
         .nest("/api/bodega", bodega_routes)
         .nest("/api/vendedor", vendedor_routes)
         .nest("/api/jefe", jefe_routes)

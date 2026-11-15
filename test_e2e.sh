@@ -258,6 +258,27 @@ else
   echo "Error: no se obtuvo el acta aprobada: $(head -c 200 /tmp/devolucion_v2.pdf)"; exit 1
 fi
 
+# El Gerente consulta el historial y descarga el acta, pero no aprueba
+GER_HIST=$(curl -s "$BASE_URL/gerente/devoluciones/historial" -H "Authorization: Bearer $TOKEN_GERENTE")
+if echo "$GER_HIST" | grep -q "\"id_devolucion\":$DEV_ID,"; then
+  echo "  ✓ El Gerente consulta el historial de devoluciones"
+else
+  echo "Error: el Gerente no ve el historial: $(echo $GER_HIST | cut -c1-200)"; exit 1
+fi
+curl -s -o /tmp/devolucion_ger.pdf "$BASE_URL/gerente/devoluciones/$DEV_ID/pdf/libros" -H "Authorization: Bearer $TOKEN_GERENTE"
+if head -c 4 /tmp/devolucion_ger.pdf | grep -q '%PDF'; then
+  echo "  ✓ El Gerente descarga el acta aprobada"
+else
+  echo "Error: el Gerente no pudo descargar el acta: $(head -c 200 /tmp/devolucion_ger.pdf)"; exit 1
+fi
+GER_APR=$(curl -s -X PUT "$BASE_URL/jefe/devoluciones/$DEV_ID/aprobar" -H "Authorization: Bearer $TOKEN_GERENTE" \
+  -H "Content-Type: application/json" -d '{"aprobar": true}')
+if echo "$GER_APR" | grep -q '"success":false'; then
+  echo "  ✓ El Gerente no puede aprobar devoluciones (solo el Jefe)"
+else
+  echo "Error: el Gerente pudo aprobar: $GER_APR"; exit 1
+fi
+
 # Rechazo con observaciones: el vendedor ve el motivo
 DEV_RECH=$(nueva_devolucion)
 curl -s -X PUT "$BASE_URL/jefe/devoluciones/$DEV_RECH/aprobar" -H "Authorization: Bearer $TOKEN_JEFE" \

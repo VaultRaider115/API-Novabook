@@ -136,6 +136,12 @@ pub async fn require_jefe(req: Request, next: Next) -> Result<Response, AppError
     Ok(next.run(req).await)
 }
 
+/// Middleware de autorización: Exclusivo para Gerente
+pub async fn require_gerente(req: Request, next: Next) -> Result<Response, AppError> {
+    validate_role(&req, &[RolEnum::Gerente])?;
+    Ok(next.run(req).await)
+}
+
 /// Middleware de autorización: Exclusivo para Personal de Bodega
 pub async fn require_bodega(req: Request, next: Next) -> Result<Response, AppError> {
     validate_role(&req, &[RolEnum::PersonalBodega])?;
