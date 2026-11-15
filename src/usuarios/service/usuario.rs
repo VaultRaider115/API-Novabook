@@ -15,6 +15,20 @@ use crate::{
 const MAX_PASSWORD_LENGTH: usize = 16;
 const MAX_NAME_LENGTH: usize = 50;
 const MAX_SURNAME_LENGTH: usize = 30;
+const BCRYPT_COST: u32 = 10;
+
+/// Hashea siempre la contraseña recibida: nunca se guarda tal cual,
+/// aunque el texto parezca un hash bcrypt.
+fn hash_password(plain: &str) -> Result<String, AppError> {
+    bcrypt::hash(plain, BCRYPT_COST)
+        .map_err(|e| AppError::Internal(format!("Error al hashear contraseña: {}", e)))
+}
+
+/// Solo acepta contraseñas almacenadas como hash bcrypt. Un valor en texto
+/// plano en la BD (o cualquier hash inválido) nunca autentica.
+fn verify_password(plain: &str, stored_hash: &str) -> bool {
+    bcrypt::verify(plain, stored_hash).unwrap_or(false)
+}
 
 fn validate_password(password: &str, required: bool) -> Result<(), AppError> {
     if required && password.trim().is_empty() {
@@ -96,21 +110,12 @@ impl UsuarioService {
             .await?
             .ok_or_else(|| AppError::Unauthorized("Credenciales incorrectas".to_string()))?;
 
-        // Verificación de contraseña (admite hash bcrypt o texto plano compatible)
-        let pass_valida = if usuario.contrasena.starts_with("$2b$")
-            || usuario.contrasena.starts_with("$2a$")
-            || usuario.contrasena.starts_with("$2y$")
-        {
-            let plano = req.contrasena.clone();
-            let hash = usuario.contrasena.clone();
-            tokio::task::spawn_blocking(move ||
-                bcrypt::verify(&plano, &hash).unwrap_or(false)
-            )
+        // Solo bcrypt: ya no existe el respaldo de comparar en texto plano.
+        let plano = req.contrasena.clone();
+        let hash = usuario.contrasena.clone();
+        let pass_valida = tokio::task::spawn_blocking(move || verify_password(&plano, &hash))
             .await
-            .map_err(|e| AppError::Internal(format!("Error verificando contraseña: {}", e)))?
-        } else {
-            usuario.contrasena == req.contrasena
-        };
+            .map_err(|e| AppError::Internal(format!("Error verificando contraseña: {}", e)))?;
 
         let activo = usuario.estado;
 
@@ -237,10 +242,7 @@ impl UsuarioService {
         }
 
         let mut req = req;
-        if !req.contrasena.starts_with("$2b$") && !req.contrasena.starts_with("$2a$") {
-            req.contrasena = bcrypt::hash(&req.contrasena, 10)
-                .map_err(|e| AppError::Internal(format!("Error al hashear contraseña: {}", e)))?;
-        }
+        req.contrasena = hash_password(&req.contrasena)?;
 
         req.nombre = req.nombre.trim().to_string();
         req.apellido_paterno = req
@@ -363,13 +365,8 @@ impl UsuarioService {
         if let Some(pass) = req.contrasena.as_deref() {
             validate_password(pass, true)?;
         }
-        if let Some(ref pass) = req.contrasena
-            && !pass.starts_with("$2b$")
-            && !pass.starts_with("$2a$")
-        {
-            req.contrasena = Some(bcrypt::hash(pass, 10).map_err(|e| {
-                AppError::Internal(format!("Error al hashear contraseña: {}", e))
-            })?);
+        if let Some(pass) = req.contrasena.as_deref() {
+            req.contrasena = Some(hash_password(pass)?);
         }
 
         let actualizado = UsuarioRepo::actualizar(pool, id, &actual, &req).await?;
@@ -442,8 +439,38 @@ impl UsuarioService {
 #[cfg(test)]
 mod tests {
     use super::{
-        validate_optional_text, validate_password, validate_phone, validate_required_text,
+        hash_password, validate_optional_text, validate_password, validate_phone,
+        validate_required_text, verify_password,
     };
+
+    #[test]
+    fn plaintext_stored_password_never_authenticates() {
+        // Antes había un respaldo que comparaba texto plano; ya no debe existir.
+        assert!(!verify_password("admin123", "admin123"));
+        assert!(!verify_password("", ""));
+    }
+
+    #[test]
+    fn hash_looking_password_is_always_hashed() {
+        let stored = hash_password("$2b$hola").unwrap();
+        assert_ne!(stored, "$2b$hola");
+        assert!(verify_password("$2b$hola", &stored));
+    }
+
+    #[test]
+    fn seeded_test_accounts_still_authenticate() {
+        // Hashes de libreria_unificada-definitivo.sql y contraseñas documentadas en CLAUDE.md.
+        let seeds = [
+            ("admin123", "$2b$10$GYRtA19hDIFbxL/ktJsMluzBL6RtxZu4KFSIOClBq14aG0Mvyh2zy"),
+            ("2501", "$2b$10$JEis.kKv578RybJ7CPTKzOnzwJMf7iUbQWZwnpgSPmii0Rv8QLpyC"),
+            ("8888", "$2b$10$9ZdsD93wmahmAOvWoEJ5SeI3yDWTZMNzlutEVfiiNbj4ZTgLPNUZy"),
+            ("7777", "$2b$10$okBEvf28NTEBI3eA/jrO3euCYnsqKpk4w2T0eOdpNFucX4Y6pSUPq"),
+        ];
+        for (plain, hash) in seeds {
+            assert!(verify_password(plain, hash), "falla la cuenta con contraseña {plain}");
+            assert!(!verify_password("incorrecta", hash));
+        }
+    }
 
     #[test]
     fn password_accepts_maximum_length() {
