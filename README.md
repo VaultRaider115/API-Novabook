@@ -40,9 +40,10 @@ Si la base se creó antes de alguno de estos cambios, aplica sus migraciones
 
 | Migración | Agrega |
 |---|---|
-| `migracion_observaciones_devolucion.sql` | columna `devolucion.observaciones` (la API avisa al arrancar si falta) |
+| `migracion_observaciones_devolucion.sql` | columna `devolucion.observaciones` |
 | `migracion_devolucion_cliente.sql` | devolución de cliente y tabla `apartados` |
 | `migracion_inventario_mensual.sql` | inventario mensual y solicitudes de editorial |
+| `migracion_recepcion_incidencias.sql` | incidencias de compra incompleta y recepción de requisiciones |
 
 ## 3. Configuración
 
@@ -101,7 +102,7 @@ cargo test                    # pruebas unitarias
 cargo clippy --all-targets    # debe quedar sin avisos
 ```
 
-**De punta a punta** (`test_e2e.sh`, 10 secciones): primero importa una base
+**De punta a punta** (`test_e2e.sh`, 11 secciones): primero importa una base
 limpia y deja la API corriendo. Después:
 
 ```bash

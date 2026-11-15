@@ -118,8 +118,14 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
 - `POST /movimientos/libros`, `POST /movimientos/revistas`: traslado suelto
   bodega → piso.
 - `POST /requisiciones`: requisición de salida bodega → piso.
+- `GET /requisiciones?tipo&estado`, `GET /requisiciones/{folio}`: estado de
+  las salidas (seguimiento y reimpresión).
 - `GET /existencias`: títulos y editorial para armar la salida.
-- `POST /compras`, `GET /compras`: compra a la editorial.
+- `POST /compras`, `GET /compras`: compra a la editorial. Cada partida lleva
+  `cantidad` (lo que llegó) y `cantidad_facturada` (opcional); si llegó menos,
+  la respuesta trae `incidencia`.
+- `GET /incidencias?estado`, `GET /incidencias/{id}`,
+  `POST /incidencias/{id}/reposicion`: compras incompletas.
 
 ### Vendedor (`/api/vendedor`)
 
@@ -127,6 +133,8 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
 - `POST /movimientos/libros`, `POST /movimientos/revistas`: traslado suelto
   piso → bodega.
 - `POST /requisiciones`: requisición de entrada piso → bodega.
+- `GET /requisiciones?tipo&estado`, `GET /requisiciones/{folio}`,
+  `POST /requisiciones/{folio}/recepcion`: recibir en piso una salida.
 - `GET /tickets/{id}`, `POST /devoluciones-cliente`: devolución de cliente.
 - `POST /devoluciones`, `GET /devoluciones` (solo las suyas): devolución a
   la editorial.
@@ -152,10 +160,23 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
 
 - **EAN-13** con dígito verificador: libros 978/979, revistas 977. **SKU** de
   6 a 7 dígitos (100000–9999999), obligatorio en el alta y sin repetirse.
-- **Compra**: una sola editorial (proveedor) por factura; cantidad mayor a 0,
-  costo no negativo, factura de hasta 30 caracteres; las piezas entran a un
-  mueble de bodega. `detalles_compras` guarda solo el subtotal: el costo
-  unitario es `subtotal / cantidad`.
+- **Compra**: una sola editorial (proveedor) por factura; costo no
+  negativo, factura de hasta 30 caracteres; las piezas entran a un mueble de
+  bodega. `detalles_compras` guarda solo el subtotal: el costo unitario es
+  `subtotal / cantidad`.
+- **Paquete incompleto** (paso 1, `IncidenciaRepo`): `cantidad` es lo que
+  llegó (puede ser 0) y `cantidad_facturada` lo que dice la factura (por
+  omisión, igual). Llegado ≤ facturado y al menos una pieza en total. Si
+  falta algo:
+  - Se abre una incidencia ABIERTA (`incidencia_compra`, una por compra) con
+    los faltantes; solo entra a bodega lo recibido.
+  - La API arma el correo al proveedor (`correo`: para, asunto, cuerpo, con
+    `proveedor.correo` y la lista de lo pendiente); el cliente lo abre en el
+    programa de correo del equipo (mailto:). No hay SMTP.
+  - `POST /incidencias/{id}/reposicion`: lo que llega después entra a bodega,
+    se suma a la compra original (`detalles_compras` y total, al costo de la
+    factura) y la incidencia se CIERRA cuando ya no falta nada. No se acepta
+    más de lo pendiente.
 - **Requisición** (`MovimientoRepo::registrar_requisicion`): un documento con
   folio `REQ-AAAA-n` (año + id del primer movimiento), todo o nada; el folio
   queda en `movimientos.observaciones`. Reglas:
@@ -164,6 +185,19 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
     bajada bodega → piso del EAN, contando lo ya regresado desde entonces;
     sin límite si nunca se bajó. También aplica a los traslados sueltos
     (`trasladar_en_tx`).
+  - Cada requisición queda en `requisicion` / `detalle_requisicion` (con el
+    mueble destino de cada EAN). La de entrada queda REGISTRADA; la de
+    salida, PENDIENTE hasta que el Vendedor la recibe.
+- **Recepción de la salida** (pasos 2 y 3, `RecepcionRepo`): el Vendedor
+  captura lo que llegó de cada partida (todas, una vez cada una) y el mueble
+  de piso donde quedó. Solo una vez por folio (después, 409).
+  - Todo coincide → CONFIRMADA. Si no → CORREGIDA y el cliente la reimprime.
+  - Llegaron menos: lo que falta regresa a su mueble de bodega y las filas de
+    `movimientos` del folio bajan a lo real. Llegaron más: el sobrante sale
+    de bodega con la fecha y nota del folio. Así la regla de la mitad mide la
+    bajada real.
+  - Cambio de mueble: las piezas pasan al mueble elegido (debe ser de piso y
+    tener espacio) y `mueble_destino` del folio se actualiza.
 - **Venta**: lleva `nombre_cliente` y `metodo_pago` (no hay tabla de
   clientes); sin stock en piso no se vende.
 - **Devolución de cliente**: ticket de 15 días o menos; no más de lo vendido
@@ -210,6 +244,10 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
   - `migracion_devolucion_cliente.sql`: devoluciones de cliente y `apartados`.
   - `migracion_inventario_mensual.sql`: inventario, detalle y solicitudes de
     editorial.
+  - `migracion_recepcion_incidencias.sql`: `incidencia_compra`,
+    `requisicion` y sus detalles.
+- La API avisa al arrancar si falta alguna de las cuatro migraciones
+  (`db::verificar_esquema`).
 - `migrations_v2.sql`, `backup_libreria.sql`: históricos.
 
 Usuarios de prueba: `1001/admin123` (Gerente), `350976899/2501` (Jefe),
@@ -220,7 +258,7 @@ Usuarios de prueba: `1001/admin123` (Gerente), `350976899/2501` (Jefe),
 - `cargo test`: pruebas unitarias (PDF, anchos de texto, formato de dinero,
   retorno máximo a bodega, URL sin contraseña, etc.).
 - `cargo clippy --all-targets`: debe quedar sin avisos.
-- `test_e2e.sh`: 10 secciones de punta a punta contra una base recién
+- `test_e2e.sh`: 11 secciones de punta a punta contra una base recién
   importada y la API corriendo. En Windows hay que usar el curl de System32,
   porque el de Git Bash rompe los acentos:
   `tr -d '\r' < test_e2e.sh > /tmp/e2e.sh && PATH=/c/WINDOWS/system32:$PATH bash /tmp/e2e.sh`

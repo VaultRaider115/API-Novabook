@@ -8,6 +8,22 @@ Rama `integracion-validaciones`: migración al esquema unificado
 (`libreria_unificada-definitivo.sql`) y reglas del diagrama de procesos.
 
 ### Added
+- **Compra incompleta** (diagrama, paso 1):
+  - Cada partida acepta `cantidad_facturada`; si llegó menos, se abre una
+    incidencia y la respuesta trae el borrador del correo al proveedor.
+  - `GET /api/bodega/incidencias`, `GET /api/bodega/incidencias/{id}` y
+    `POST /api/bodega/incidencias/{id}/reposicion` (lo que llega después;
+    cierra la incidencia al completarse).
+- **Recepción de la salida en piso** (pasos 2 y 3):
+  - Las requisiciones quedan en las tablas `requisicion` y
+    `detalle_requisicion`.
+  - `GET /api/bodega|vendedor/requisiciones` y `.../{folio}`.
+  - `POST /api/vendedor/requisiciones/{folio}/recepcion`: confirma o corrige
+    lo recibido (ajusta stock y movimientos del folio) y registra el mueble
+    de piso de cada libro.
+  - Migración: `migracion_recepcion_incidencias.sql`.
+- La API avisa al arrancar si falta cualquiera de las migraciones.
+- e2e: sección 11 (incidencia y recepción).
 - **Stock por mueble**: alta, compras, traslados y ventas usan `existencias`
   por mueble y `movimientos` con mueble de origen y destino, en
   transacciones.
