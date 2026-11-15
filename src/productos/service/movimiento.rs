@@ -43,40 +43,6 @@ fn normalizar_partidas(entrada: Vec<PartidaRequisicion>) -> Result<Vec<PartidaRe
     Ok(items)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{MAX_PARTIDAS_REQUISICION, normalizar_partidas};
-    use crate::productos::model::PartidaRequisicion;
-
-    fn p(ean: i64, cantidad: i32) -> PartidaRequisicion {
-        PartidaRequisicion { codigo_ean: ean, cantidad }
-    }
-
-    #[test]
-    fn suma_ean_repetidos_y_conserva_orden() {
-        let r = normalizar_partidas(vec![p(978_1, 2), p(977_1, 5), p(978_1, 3)]).unwrap();
-        assert_eq!(r.len(), 2);
-        assert_eq!((r[0].codigo_ean, r[0].cantidad), (978_1, 5));
-        assert_eq!((r[1].codigo_ean, r[1].cantidad), (977_1, 5));
-    }
-
-    #[test]
-    fn rechaza_vacia_cantidades_y_ean_invalidos() {
-        assert!(normalizar_partidas(vec![]).is_err());
-        assert!(normalizar_partidas(vec![p(978_1, 0)]).is_err());
-        assert!(normalizar_partidas(vec![p(978_1, -2)]).is_err());
-        assert!(normalizar_partidas(vec![p(0, 1)]).is_err());
-    }
-
-    #[test]
-    fn limita_el_numero_de_partidas() {
-        let muchas: Vec<_> = (1..=MAX_PARTIDAS_REQUISICION as i64 + 1).map(|e| p(e, 1)).collect();
-        assert!(normalizar_partidas(muchas).is_err());
-        let justas: Vec<_> = (1..=MAX_PARTIDAS_REQUISICION as i64).map(|e| p(e, 1)).collect();
-        assert!(normalizar_partidas(justas).is_ok());
-    }
-}
-
 impl MovimientoService {
     /// Requisición de varias partidas con folio. Bodega → Piso (salida) o
     /// Piso → Bodega (entrada); todo o nada.
@@ -305,5 +271,39 @@ impl MovimientoService {
             stock_destino_nuevo: nuevo_bodega,
             mensaje: "Traslado de revistas de tienda a bodega completado exitosamente".to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_PARTIDAS_REQUISICION, normalizar_partidas};
+    use crate::productos::model::PartidaRequisicion;
+
+    fn p(ean: i64, cantidad: i32) -> PartidaRequisicion {
+        PartidaRequisicion { codigo_ean: ean, cantidad }
+    }
+
+    #[test]
+    fn suma_ean_repetidos_y_conserva_orden() {
+        let r = normalizar_partidas(vec![p(9781, 2), p(9771, 5), p(9781, 3)]).unwrap();
+        assert_eq!(r.len(), 2);
+        assert_eq!((r[0].codigo_ean, r[0].cantidad), (9781, 5));
+        assert_eq!((r[1].codigo_ean, r[1].cantidad), (9771, 5));
+    }
+
+    #[test]
+    fn rechaza_vacia_cantidades_y_ean_invalidos() {
+        assert!(normalizar_partidas(vec![]).is_err());
+        assert!(normalizar_partidas(vec![p(9781, 0)]).is_err());
+        assert!(normalizar_partidas(vec![p(9781, -2)]).is_err());
+        assert!(normalizar_partidas(vec![p(0, 1)]).is_err());
+    }
+
+    #[test]
+    fn limita_el_numero_de_partidas() {
+        let muchas: Vec<_> = (1..=MAX_PARTIDAS_REQUISICION as i64 + 1).map(|e| p(e, 1)).collect();
+        assert!(normalizar_partidas(muchas).is_err());
+        let justas: Vec<_> = (1..=MAX_PARTIDAS_REQUISICION as i64).map(|e| p(e, 1)).collect();
+        assert!(normalizar_partidas(justas).is_ok());
     }
 }

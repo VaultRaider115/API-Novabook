@@ -26,7 +26,13 @@ const DEVOLUCION_SELECT: &str = r#"
            p.telefono AS proveedor_telefono,
            p.correo AS proveedor_correo,
            p.direccion AS proveedor_direccion,
-           p.persona_contacto AS proveedor_contacto
+           p.persona_contacto AS proveedor_contacto,
+           (SELECT SUBSTRING_INDEX(b.detalle, 'Observaciones: ', -1)
+              FROM bitacora b
+             WHERE b.accion LIKE 'RECHAZAR DEVOLUCI%'
+               AND b.detalle LIKE CONCAT('%#', d.id_devolucion, ' actualizada a estado%Observaciones: %')
+             ORDER BY b.fecha_hora DESC
+             LIMIT 1) AS observaciones_rechazo
     FROM devolucion d
     JOIN usuarios u ON d.id_usuarios = u.id_usuarios
     LEFT JOIN roles ur ON ur.id_roles = u.id_roles
@@ -58,6 +64,10 @@ fn map_devolucion(
         proveedor_contacto: row.get("proveedor_contacto"),
         tipo_producto,
         items,
+        observaciones_rechazo: row
+            .try_get::<Option<String>, _>("observaciones_rechazo")
+            .ok()
+            .flatten(),
     }
 }
 
@@ -292,6 +302,9 @@ impl DevolucionRepo {
             builder
                 .push(" AND d.id_proveedor = ")
                 .push_bind(id_proveedor);
+        }
+        if let Some(id_usuarios) = params.id_usuarios {
+            builder.push(" AND d.id_usuarios = ").push_bind(id_usuarios);
         }
         builder.push(" ORDER BY d.fecha_solicitud DESC, d.id_devolucion DESC");
 

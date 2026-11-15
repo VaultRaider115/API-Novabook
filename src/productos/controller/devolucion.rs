@@ -89,6 +89,16 @@ pub async fn generar_pdf_revistas_vendedor(
     Ok((StatusCode::OK, headers, Body::from(pdf_bytes)).into_response())
 }
 
+/// Vendedor: sus propias solicitudes (el id sale del token, no de la URL).
+pub async fn consultar_mis_devoluciones_vendedor(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Query(params): Query<HistorialDevolucionQuery>,
+) -> Result<Json<ApiResponse<Vec<Devolucion>>>, AppError> {
+    let res = DevolucionService::consultar_mis_devoluciones(&state.pool, claims.id_usuario, params).await?;
+    Ok(Json(ApiResponse::success(res)))
+}
+
 pub async fn consultar_historial_devoluciones_jefe(
     State(state): State<AppState>,
     Extension(_claims): Extension<Claims>,

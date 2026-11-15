@@ -32,6 +32,9 @@ pub struct Devolucion {
     pub proveedor_contacto: Option<String>,
     pub tipo_producto: TipoProducto,
     pub items: Vec<ItemDevolucion>,
+    /// Motivo que escribió el Jefe al rechazar (se guarda en la bitácora).
+    #[serde(default)]
+    pub observaciones_rechazo: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -69,4 +72,7 @@ pub struct HistorialDevolucionQuery {
     pub fecha: Option<String>,
     pub estado: Option<String>,
     pub id_proveedor: Option<i32>,
+    /// Solo lo fija el servidor (lista "Mis devoluciones"); nunca viene de la URL.
+    #[serde(skip)]
+    pub id_usuarios: Option<i64>,
 }

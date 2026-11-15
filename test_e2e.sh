@@ -222,18 +222,51 @@ fi
 # 7. DEVOLUCIÓN A PROVEEDOR Y DESCARGA DE PDF COMPLETO
 # -----------------------------------------------------------------------------
 echo "[7/8] Probando Devolución y generación de PDF con datos completos de Proveedor..."
-DEV_RES=$(curl -s -X POST "$BASE_URL/vendedor/devoluciones" \
-  -H "Authorization: Bearer $TOKEN_VENDEDOR" \
-  -H "Content-Type: application/json" \
-  -d '{"id_proveedor": 1, "items": [{"codigo_ean": 9786073832014, "cantidad": 1, "motivo": "Defecto de imprenta"}]}')
-DEV_ID=$(echo "$DEV_RES" | grep -o '"id_devolucion":[0-9]*' | cut -d':' -f2)
+nueva_devolucion() {
+  curl -s -X POST "$BASE_URL/vendedor/devoluciones" \
+    -H "Authorization: Bearer $TOKEN_VENDEDOR" \
+    -H "Content-Type: application/json" \
+    -d '{"id_proveedor": 1, "tipo_producto": "libro", "items": [{"codigo_ean": 9786073832014, "cantidad": 1, "id_motivo": 1}]}' \
+    | grep -o '"id_devolucion":[0-9]*' | head -n1 | cut -d':' -f2
+}
+DEV_ID=$(nueva_devolucion)
+if [ -z "$DEV_ID" ]; then echo "Error creando devolución"; exit 1; fi
+echo "  ✓ Devolución #$DEV_ID registrada (PENDIENTE)"
 
-curl -s -o /tmp/devolucion_v2.pdf -X GET "$BASE_URL/vendedor/devoluciones/$DEV_ID/pdf/libros" \
-  -H "Authorization: Bearer $TOKEN_VENDEDOR"
+# Mientras está pendiente el acta no existe
+curl -s -o /tmp/devolucion_v2.pdf "$BASE_URL/vendedor/devoluciones/$DEV_ID/pdf/libros" -H "Authorization: Bearer $TOKEN_VENDEDOR"
+if head -c 4 /tmp/devolucion_v2.pdf | grep -q '%PDF'; then
+  echo "Error: se generó el acta de una devolución pendiente"; exit 1
+fi
+echo "  ✓ El acta no se entrega mientras la devolución está pendiente"
 
-if [ -s /tmp/devolucion_v2.pdf ]; then
-  PDF_SIZE=$(wc -c < /tmp/devolucion_v2.pdf)
-  echo "  ✓ PDF generado exitosamente ($PDF_SIZE bytes) con ficha completa del proveedor"
+# "Mis devoluciones" del vendedor la incluye como pendiente
+MIS_DEV=$(curl -s "$BASE_URL/vendedor/devoluciones?estado=PENDIENTE" -H "Authorization: Bearer $TOKEN_VENDEDOR")
+if echo "$MIS_DEV" | grep -q "\"id_devolucion\":$DEV_ID,"; then
+  echo "  ✓ La devolución aparece en Mis Devoluciones del vendedor"
+else
+  echo "Error: no aparece en Mis Devoluciones: $(echo $MIS_DEV | cut -c1-200)"; exit 1
+fi
+
+# El Jefe aprueba y el vendedor descarga un PDF real
+curl -s -X PUT "$BASE_URL/jefe/devoluciones/$DEV_ID/aprobar" -H "Authorization: Bearer $TOKEN_JEFE" \
+  -H "Content-Type: application/json" -d '{"aprobar": true}' > /dev/null
+curl -s -o /tmp/devolucion_v2.pdf "$BASE_URL/vendedor/devoluciones/$DEV_ID/pdf/libros" -H "Authorization: Bearer $TOKEN_VENDEDOR"
+if head -c 4 /tmp/devolucion_v2.pdf | grep -q '%PDF'; then
+  echo "  ✓ Acta PDF aprobada descargada ($(wc -c < /tmp/devolucion_v2.pdf) bytes)"
+else
+  echo "Error: no se obtuvo el acta aprobada: $(head -c 200 /tmp/devolucion_v2.pdf)"; exit 1
+fi
+
+# Rechazo con observaciones: el vendedor ve el motivo
+DEV_RECH=$(nueva_devolucion)
+curl -s -X PUT "$BASE_URL/jefe/devoluciones/$DEV_RECH/aprobar" -H "Authorization: Bearer $TOKEN_JEFE" \
+  -H "Content-Type: application/json" -d '{"aprobar": false, "notas": "Faltan piezas del lote"}' > /dev/null
+MIS_RECH=$(curl -s "$BASE_URL/vendedor/devoluciones?estado=RECHAZADO" -H "Authorization: Bearer $TOKEN_VENDEDOR")
+if echo "$MIS_RECH" | grep -q '"observaciones_rechazo":"Faltan piezas del lote"'; then
+  echo "  ✓ El vendedor ve el motivo del rechazo"
+else
+  echo "Error: no se ve el motivo del rechazo: $(echo $MIS_RECH | cut -c1-200)"; exit 1
 fi
 
 # -----------------------------------------------------------------------------

@@ -124,6 +124,18 @@ impl DevolucionService {
         DevolucionRepo::listar_historial_devoluciones(pool, &params).await
     }
 
+    /// "Mis devoluciones": solo las solicitudes del usuario autenticado, para
+    /// dar seguimiento y descargar el acta cuando el Jefe la apruebe.
+    pub async fn consultar_mis_devoluciones(
+        pool: &DbPool,
+        actor_id: i64,
+        mut params: HistorialDevolucionQuery,
+    ) -> Result<Vec<Devolucion>, AppError> {
+        params.id_usuarios = Some(actor_id);
+        params.id_proveedor = None;
+        DevolucionRepo::listar_historial_devoluciones(pool, &params).await
+    }
+
     pub async fn aprobar_devolucion(
         pool: &DbPool,
         actor_id: i64,
