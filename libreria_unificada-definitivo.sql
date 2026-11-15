@@ -272,7 +272,7 @@ INSERT INTO `productos` (`codigo_ean`, `id_proveedor`, `tipo_producto`, `SKU`, `
   (9786078852895, 2, 'Libro',   750912,  260.00),
   (9788497776639, 1, 'Libro',   9777668, 199.00),
   (9771234567010, 2, 'Revista', 200001,  120.00),
-  (9772007490001, 4, 'Revista', 901001,  65.00);
+  (9772007490009, 4, 'Revista', 901001,  65.00);
 
 CREATE TABLE `libros` (
   `codigo_ean`   BIGINT       NOT NULL,
@@ -302,7 +302,7 @@ CREATE TABLE `revistas` (
 
 INSERT INTO `revistas` (`codigo_ean`, `id_editorial`, `nombre_revista`, `numero_edicion`, `periodicidad`) VALUES
   (9771234567010, 1, 'National Geographic Mar 2026',       345, 'Mensual'),
-  (9772007490001, 2, 'Muy Interesante Mexico Ed. 452',     452, 'Mensual');
+  (9772007490009, 2, 'Muy Interesante Mexico Ed. 452',     452, 'Mensual');
 
 -- ---- Autores_has_Libros (N:M) ----------------------------------------------
 CREATE TABLE `autores_has_libros` (
@@ -344,7 +344,7 @@ INSERT INTO `productos_has_genero` (`codigo_ean`, `id_genero`) VALUES
   -- Revistas
   (9771234567010, 15), -- Historia
   (9771234567010, 18), -- Divulgacion Cientifica
-  (9772007490001, 18); -- Divulgacion Cientifica
+  (9772007490009, 18); -- Divulgacion Cientifica
 
 -- ============================================================================
 -- 4. EXISTENCIAS (inventario por mueble)  y MOVIMIENTOS
@@ -378,8 +378,8 @@ INSERT INTO `existencias` (`codigo_ean`, `id_mueble`, `cantidad`) VALUES
   (9771234567010, 11,  10),
   (9771234567010, 111, 35),
   -- Muy Interesante Mexico Ed. 452
-  (9772007490001, 11,  15),
-  (9772007490001, 111, 40);
+  (9772007490009, 11,  15),
+  (9772007490009, 111, 40);
 
 CREATE TABLE `movimientos` (
   `id_movimientos` BIGINT       NOT NULL AUTO_INCREMENT,
@@ -574,7 +574,7 @@ INSERT INTO `detalle_ventas` (`id_detalle`, `id_ventas`, `codigo_ean`, `cantidad
   -- Venta #2: 1 libro (Un Himno a la Vida) + 1 NatGeo + 1 Muy Interesante
   (3, 2, 9786073868723, 1, 299.00, 299.00),
   (4, 2, 9771234567010, 1, 120.00, 120.00),
-  (5, 2, 9772007490001, 1,  65.00,  65.00);
+  (5, 2, 9772007490009, 1,  65.00,  65.00);
 
 -- ============================================================================
 -- 8. DEVOLUCIONES

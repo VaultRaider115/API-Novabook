@@ -281,8 +281,8 @@ CREATE TABLE `revistas` (
 INSERT INTO `revistas` (`codigo_ean`, `id_ubicacion`, `id_mueble`, `id_proveedor`, `nombre_revista`, `numero_edicion`, `periodicidad`, `precio`, `cantidad`, `SKU`) VALUES
   (9771234567010, 1, 11, 2, 'National Geographic Mar 2026', 345, 'Mensual', 120.00, 10, 20001),
   (9771234567010, 2, 11, 2, 'National Geographic Mar 2026', 345, 'Mensual', 120.00, 35, 20001),
-  (9772007490001, 1, 11, 4, 'Muy Interesante Mexico Ed. 452', 452, 'Mensual', 65.00, 15, 901001),
-  (9772007490001, 2, 11, 4, 'Muy Interesante Mexico Ed. 452', 452, 'Mensual', 65.00, 40, 901001);
+  (9772007490009, 1, 11, 4, 'Muy Interesante Mexico Ed. 452', 452, 'Mensual', 65.00, 15, 901001),
+  (9772007490009, 2, 11, 4, 'Muy Interesante Mexico Ed. 452', 452, 'Mensual', 65.00, 40, 901001);
 
 -- ----------------------------------------------------------------------------
 -- 11. Tabla Intermedia: revista_genero
@@ -298,7 +298,7 @@ CREATE TABLE `revista_genero` (
 INSERT INTO `revista_genero` (`codigo_ean`, `id_genero`) VALUES
   (9771234567010, 15), -- Historia
   (9771234567010, 18), -- Divulgación Científica
-  (9772007490001, 18); -- Divulgación Científica
+  (9772007490009, 18); -- Divulgación Científica
 
 -- ----------------------------------------------------------------------------
 -- 12. Tabla: bitacora
@@ -398,7 +398,7 @@ INSERT INTO `detalle_ventas` (`id_detalle`, `id_venta`, `codigo_ean`, `tipo_prod
   -- Venta #2: Cliente adquiere 1 libro (Un Himno a la Vida), 1 revista NatGeo y 1 revista Muy Interesante
   (3, 2, 9786073868723, 'Libro', 1, 299.00, 299.00),
   (4, 2, 9771234567010, 'Revista', 1, 120.00, 120.00),
-  (5, 2, 9772007490001, 'Revista', 1, 65.00, 65.00);
+  (5, 2, 9772007490009, 'Revista', 1, 65.00, 65.00);
 
 -- Vista Relacional: Consulta completa de clientes y productos comprados (libros y revistas)
 CREATE OR REPLACE VIEW `vista_cliente_compras` AS
