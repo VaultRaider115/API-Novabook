@@ -1,5 +1,6 @@
 use crate::{config::Config, error::AppError};
-use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
+use sqlx::mysql::{MySqlConnectOptions, MySqlPool, MySqlPoolOptions};
+use std::str::FromStr;
 use std::time::Duration;
 
 pub type DbPool = MySqlPool;
@@ -11,12 +12,21 @@ pub struct AppState {
 }
 
 pub async fn create_pool(database_url: &str) -> Result<DbPool, AppError> {
+    // sqlx fija por omisión la zona de la sesión en UTC (+00:00): NOW() y
+    // CURRENT_TIMESTAMP guardaban la hora UTC (6 h adelante en Saltillo) y,
+    // después de las 18:00, los eventos quedaban con la fecha del día
+    // siguiente (el Historial de Movimientos de "hoy" salía vacío). Se usa la
+    // zona del servidor de BD, o la de DB_TIME_ZONE si se define (ej. -06:00).
+    let zona = std::env::var("DB_TIME_ZONE").ok().filter(|z| !z.trim().is_empty());
+    let opciones = MySqlConnectOptions::from_str(database_url)
+        .map_err(AppError::Database)?
+        .timezone(zona);
     MySqlPoolOptions::new()
         .max_connections(10)
         .min_connections(2)
         .acquire_timeout(Duration::from_secs(5))
         .idle_timeout(Duration::from_secs(30))
-        .connect(database_url)
+        .connect_with(opciones)
         .await
         .map_err(AppError::Database)
 }

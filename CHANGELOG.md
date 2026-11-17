@@ -115,6 +115,10 @@ Rama `integracion-validaciones`: migración al esquema unificado
   - `CHANGELOG.md` con los cambios de esta rama.
 
 ### Fixed
+- Fechas en hora local: sqlx fijaba la sesión en UTC y, después de las
+  18:00, los eventos quedaban con la fecha del día siguiente (el Historial
+  de Movimientos de hoy salía vacío). La conexión usa la zona del servidor
+  de BD o la de `DB_TIME_ZONE` si se define.
 - Devoluciones sin importar mayúsculas o minúsculas en el tipo de producto.
 - Borrar un autor con libros asociados ya no rompe la integridad.
 - Semilla: el EAN de "Muy Interesante" pasa a 9772007490009, con el dígito

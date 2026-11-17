@@ -65,6 +65,7 @@ SERVER_PORT=8080
 | `JWT_EXPIRATION_HOURS` | no | 24 |
 | `SERVER_HOST` | no | `0.0.0.0` |
 | `SERVER_PORT` | no | 8080 |
+| `DB_TIME_ZONE` | no | zona del servidor de BD (ej. `-06:00`) |
 
 ## 4. Ejecutar
 
