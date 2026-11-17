@@ -10,6 +10,7 @@ pub struct ExistenciaInventario {
     pub stock_bodega: i32,
     pub stock_total: i32,
     pub precio: f64,
+    pub id_proveedor: Option<i32>,
     pub proveedor: Option<String>,
     pub autor_o_editorial: Option<String>,
     pub generos: Option<String>,

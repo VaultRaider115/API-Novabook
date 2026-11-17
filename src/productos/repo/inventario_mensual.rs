@@ -80,8 +80,20 @@ impl InventarioMensualRepo {
         let resumen = mapear_resumen(&r);
         let filas = sqlx::query(
             "SELECT di.codigo_ean, COALESCE(l.nombre_libro, rv.nombre_revista, '') AS titulo, p.tipo_producto, \
-               pr.nombre_proveedor, di.cantidad_contada, di.stock_sistema, di.stock_apartado, di.motivo_devolucion \
+               pr.nombre_proveedor, di.cantidad_contada, di.stock_sistema, di.stock_apartado, \
+               COALESCE(di.motivo_devolucion, CASE WHEN i.estado = 'ABIERTO' THEN CASE \
+                 WHEN EXISTS (SELECT 1 FROM detalle_solicitud_editorial ds \
+                      JOIN solicitud_editorial s ON s.id_solicitud = ds.id_solicitud \
+                      WHERE ds.codigo_ean = di.codigo_ean AND s.estado = 'ABIERTA') THEN ? \
+                 WHEN di.cantidad_contada > 0 \
+                  AND NOT EXISTS (SELECT 1 FROM detalle_ventas dv JOIN ventas v ON v.id_ventas = dv.id_ventas \
+                      WHERE dv.codigo_ean = di.codigo_ean AND v.fecha_hora >= NOW() - INTERVAL i.dias_anejamiento DAY) \
+                  AND NOT EXISTS (SELECT 1 FROM detalles_compras dc \
+                      JOIN compras_proveedor c ON c.id_compras_proveedor = dc.id_compras_proveedor \
+                      WHERE dc.codigo_ean = di.codigo_ean AND c.fecha_hora >= NOW() - INTERVAL i.dias_anejamiento DAY) THEN ? \
+               END END) AS motivo_devolucion \
              FROM detalle_inventario di \
+             JOIN inventario i ON i.id_inventario = di.id_inventario \
              JOIN productos p ON p.codigo_ean = di.codigo_ean \
              JOIN proveedor pr ON pr.id_proveedor = p.id_proveedor \
              LEFT JOIN libros l ON l.codigo_ean = di.codigo_ean \
@@ -89,6 +101,10 @@ impl InventarioMensualRepo {
              WHERE di.id_inventario = ? \
              ORDER BY (di.motivo_devolucion IS NULL), pr.nombre_proveedor, titulo",
         )
+        // Con el inventario ABIERTO el motivo aún no se guarda: se calcula con la
+        // regla del cierre para que el vendedor separe esos títulos al contar.
+        .bind(MOTIVO_SOLICITUD)
+        .bind(MOTIVO_ANEJAMIENTO)
         .bind(id)
         .fetch_all(pool)
         .await
@@ -327,7 +343,9 @@ impl InventarioMensualRepo {
         for f in filas {
             let id = row_get_i64(&f, "id_solicitud");
             let items = sqlx::query(
-                "SELECT ds.codigo_ean, COALESCE(l.nombre_libro, r.nombre_revista, '') AS titulo \
+                "SELECT ds.codigo_ean, COALESCE(l.nombre_libro, r.nombre_revista, '') AS titulo, \
+                   COALESCE((SELECT SUM(e.cantidad) FROM existencias e WHERE e.codigo_ean = ds.codigo_ean), 0) \
+                   + COALESCE((SELECT a.cantidad FROM apartados a WHERE a.codigo_ean = ds.codigo_ean), 0) AS piezas \
                  FROM detalle_solicitud_editorial ds \
                  LEFT JOIN libros l ON l.codigo_ean = ds.codigo_ean LEFT JOIN revistas r ON r.codigo_ean = ds.codigo_ean \
                  WHERE ds.id_solicitud = ? ORDER BY titulo",
@@ -337,7 +355,11 @@ impl InventarioMensualRepo {
             .await
             .map_err(AppError::Database)?
             .iter()
-            .map(|i| SolicitudEditorialItem { codigo_ean: row_get_i64(i, "codigo_ean"), titulo: i.get("titulo") })
+            .map(|i| SolicitudEditorialItem {
+                codigo_ean: row_get_i64(i, "codigo_ean"),
+                titulo: i.get("titulo"),
+                piezas: row_get_i32(i, "piezas"),
+            })
             .collect();
             res.push(SolicitudEditorial {
                 id_solicitud: id,

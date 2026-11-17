@@ -1,7 +1,7 @@
 use sqlx::Row;
 
 use crate::{
-    db::{DbPool, row_get_f64, row_get_i64, row_get_opt_i64},
+    db::{DbPool, row_get_f64, row_get_i64, row_get_opt_i32, row_get_opt_i64},
     error::AppError,
     productos::model::{ExistenciaInventario, FiltroExistencias},
 };
@@ -16,7 +16,7 @@ impl InventarioRepo {
         let mut sql = String::from(
             r#"
             SELECT l.codigo_ean, p.SKU as sku, l.nombre_libro as titulo, 'Libro' as tipo_producto,
-                   p.precio, pr.nombre_proveedor as proveedor,
+                   p.precio, p.id_proveedor, pr.nombre_proveedor as proveedor,
                    COALESCE((SELECT GROUP_CONCAT(DISTINCT CONCAT(a.nombre, ' ', a.apellidos) SEPARATOR ', ')
                              FROM autores_has_libros al JOIN autores a ON a.id_autores = al.id_autores
                              WHERE al.codigo_ean = l.codigo_ean), 'Sin Autor') as autor_o_editorial,
@@ -47,13 +47,13 @@ impl InventarioRepo {
                              WHERE al.codigo_ean = l.codigo_ean AND (a.nombre LIKE ? OR a.apellidos LIKE ? OR CONCAT(a.nombre, ' ', a.apellidos) LIKE ?)))",
             );
         }
-        sql.push_str(" GROUP BY l.codigo_ean, p.SKU, l.nombre_libro, p.precio, pr.nombre_proveedor");
+        sql.push_str(" GROUP BY l.codigo_ean, p.SKU, l.nombre_libro, p.precio, p.id_proveedor, pr.nombre_proveedor");
 
         sql.push_str(
             r#"
             UNION ALL
             SELECT r.codigo_ean, p.SKU as sku, r.nombre_revista as titulo, 'Revista' as tipo_producto,
-                   p.precio, pr.nombre_proveedor as proveedor,
+                   p.precio, p.id_proveedor, pr.nombre_proveedor as proveedor,
                    COALESCE(ed.nombre_editorial, 'Sin editorial') as autor_o_editorial,
                    COALESCE((SELECT GROUP_CONCAT(DISTINCT g.genero_literario SEPARATOR ', ')
                              FROM productos_has_genero pg JOIN genero g ON g.id_genero = pg.id_genero
@@ -75,7 +75,7 @@ impl InventarioRepo {
                 " AND (r.nombre_revista LIKE ? OR ed.nombre_editorial LIKE ? OR CAST(r.codigo_ean AS CHAR) LIKE ? OR CAST(p.SKU AS CHAR) LIKE ?)",
             );
         }
-        sql.push_str(" GROUP BY r.codigo_ean, p.SKU, r.nombre_revista, p.precio, pr.nombre_proveedor, ed.nombre_editorial");
+        sql.push_str(" GROUP BY r.codigo_ean, p.SKU, r.nombre_revista, p.precio, p.id_proveedor, pr.nombre_proveedor, ed.nombre_editorial");
         sql.push_str(" ORDER BY titulo ASC");
 
         // Solo se concatenan fragmentos fijos; el texto del usuario siempre va por bind.
@@ -124,6 +124,7 @@ impl InventarioRepo {
                     stock_bodega: stock_bodega as i32,
                     stock_total,
                     precio: row_get_f64(&r, "precio"),
+                    id_proveedor: row_get_opt_i32(&r, "id_proveedor"),
                     proveedor: r.get("proveedor"),
                     autor_o_editorial: r.get("autor_o_editorial"),
                     generos: r.get("generos"),

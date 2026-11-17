@@ -220,6 +220,8 @@ pub fn router(state: AppState) -> Router<AppState> {
             get(bitacora::consultar_movimiento_diario_jefe),
         )
         .route("/bitacora", get(bitacora::consultar_bitacora_jefe))
+        // Títulos y stock al capturar una solicitud de editorial.
+        .route("/existencias", get(inventario::consultar_existencias_vendedor))
         .route("/inventarios", get(inventario_mensual::listar_inventarios))
         .route("/inventarios/{id}", get(inventario_mensual::obtener_inventario))
         .route("/inventarios/{id}/revisar", put(inventario_mensual::revisar_inventario))

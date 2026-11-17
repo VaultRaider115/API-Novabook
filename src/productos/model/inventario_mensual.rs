@@ -76,6 +76,8 @@ pub struct CrearSolicitudEditorialRequest {
 pub struct SolicitudEditorialItem {
     pub codigo_ean: i64,
     pub titulo: String,
+    /// Piezas que hay hoy en la tienda (piso, bodega y apartados): lo que habría que regresar.
+    pub piezas: i32,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -94,9 +94,9 @@ impl ProductoService {
                 "La cantidad no puede ser negativa".to_string(),
             ));
         }
-        if req.precio < 0.0 {
+        if req.precio <= 0.0 || !req.precio.is_finite() {
             return Err(AppError::BadRequest(
-                "El precio no puede ser negativo".to_string(),
+                "El precio de venta debe ser mayor a $0".to_string(),
             ));
         }
 
@@ -148,9 +148,9 @@ impl ProductoService {
                 "La cantidad no puede ser negativa".to_string(),
             ));
         }
-        if req.precio < 0.0 {
+        if req.precio <= 0.0 || !req.precio.is_finite() {
             return Err(AppError::BadRequest(
-                "El precio no puede ser negativo".to_string(),
+                "El precio de venta debe ser mayor a $0".to_string(),
             ));
         }
 

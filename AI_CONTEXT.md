@@ -150,6 +150,8 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
 - `GET /bitacora?desde&hasta&categoria&page&per_page`
 - `GET /inventarios`, `GET /inventarios/{id}`, `PUT /inventarios/{id}/revisar`
 - `GET|POST /solicitudes-editorial`, `PUT /solicitudes-editorial/{id}/atender`
+  (cada título trae `piezas`: piso + bodega + apartados)
+- `GET /existencias`: título, stock e `id_proveedor` al capturar la solicitud.
 
 ### Gerente (`/api/gerente`, solo lectura de devoluciones)
 
@@ -225,6 +227,13 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
     compras en `DIAS_ANEJAMIENTO = 90` días).
   - El Jefe aprueba (ajusta el piso con la diferencia, sin pasar del stock
     actual) o rechaza con motivo.
+  - Mientras está ABIERTO, el detalle calcula `motivo_devolucion` con la
+    misma regla (añejado solo si se contó algo), para que el Vendedor separe
+    esos títulos; al cerrar se guarda.
+- **Muebles**: código `P-…` en Piso de Venta y `B-…` en Bodega (máx. 10
+  caracteres); la capacidad no baja de las piezas que ya tiene; con piezas no
+  cambia de área ni de género.
+- **Alta de producto**: precio de venta mayor a $0.
 
 ## 8. Bitácora
 

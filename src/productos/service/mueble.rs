@@ -53,6 +53,16 @@ impl MuebleService {
                 "Área inválida (debe ser Piso de Venta o Bodega)".to_string(),
             ));
         }
+        // El código empieza con P- (Piso de Venta) o B- (Bodega), según el área.
+        let prefijo = if req.id_ubicacion == 1 { "P-" } else { "B-" };
+        if !codigo.starts_with(prefijo) || codigo.len() == prefijo.len() {
+            return Err(AppError::BadRequest(format!(
+                "El código de un mueble de {} debe empezar con \"{}\" seguido del número (ej. {}011)",
+                if req.id_ubicacion == 1 { "Piso de Venta" } else { "Bodega" },
+                prefijo,
+                prefijo
+            )));
+        }
 
         let cap = req.capacidad.unwrap_or(0);
         if !(1..=99_999).contains(&cap) {
@@ -139,7 +149,7 @@ impl MuebleService {
             let cap = req.capacidad.unwrap_or(0);
             if cap < actual.capacidad_actual {
                 return Err(AppError::BadRequest(format!(
-                    "La capacidad máxima ({}) no puede ser menor a las piezas actuales ({})",
+                    "La capacidad máxima ({}) no puede ser menor a las {} piezas que ya tiene el mueble",
                     cap, actual.capacidad_actual
                 )));
             }

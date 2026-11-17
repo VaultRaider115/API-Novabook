@@ -8,6 +8,18 @@ Rama `integracion-validaciones`: migración al esquema unificado
 (`libreria_unificada-definitivo.sql`) y reglas del diagrama de procesos.
 
 ### Added
+- Revisión del equipo (16-nov):
+  - `GET /api/jefe/existencias`: título, stock y `id_proveedor` de cada EAN
+    al capturar una solicitud de editorial (existencias trae `id_proveedor`
+    para todos los roles).
+  - Las solicitudes de editorial traen `piezas` por título (piso, bodega y
+    apartados: lo que habría que regresar).
+  - `GET /api/vendedor/inventarios/actual` trae el `motivo_devolucion`
+    mientras el inventario está abierto (misma regla del cierre), para que el
+    Vendedor separe esos títulos al contar.
+  - Muebles: el código debe empezar con `P-` (Piso de Venta) o `B-` (Bodega)
+    según el área, seguido del número.
+  - Alta de libros y revistas: el precio de venta debe ser mayor a $0.
 - El alta de libros y revistas rechaza un EAN ya registrado (antes
   sobrescribía título, precio, SKU y autores); las piezas entran por Compras.
 - **Compra incompleta** (diagrama, paso 1):
@@ -70,6 +82,9 @@ Rama `integracion-validaciones`: migración al esquema unificado
     bodega.
 
 ### Changed
+- El error de capacidad de un mueble dice cuántas piezas tiene: "La
+  capacidad máxima (X) no puede ser menor a las N piezas que ya tiene el
+  mueble".
 - **Escritura de catálogos** según el diagrama:
   - Autores, géneros, motivos y muebles: solo el Jefe.
   - Editoriales y proveedores: CRUD del Jefe; Bodega solo da de alta.

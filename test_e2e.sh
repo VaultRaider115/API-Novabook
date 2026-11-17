@@ -139,6 +139,11 @@ DUP_RES=$(curl -s -X POST "$BASE_URL/bodega/libros"   -H "Authorization: Bearer 
 echo "$DUP_RES" | grep -q 'ya está registrado' || { echo "Error: se aceptó un EAN repetido en el alta: $DUP_RES"; exit 1; }
 echo "  ✓ El alta rechaza un EAN ya registrado"
 
+# El precio de venta debe ser mayor a 0
+PRECIO0=$(curl -s -X POST "$BASE_URL/bodega/libros"   -H "Authorization: Bearer $TOKEN_BODEGA"   -H "Content-Type: application/json"   -d '{"codigo_ean": 9786071234568, "sku": 555555, "nombre_libro": "Pedro Paramo", "id_proveedor": 1, "generos": [15], "autores": [2], "precio": 0, "cantidad": 0, "id_mueble": 111}')
+echo "$PRECIO0" | grep -q 'debe ser mayor a' || { echo "Error: se aceptó un precio de 0: $PRECIO0"; exit 1; }
+echo "  ✓ El alta rechaza un precio de venta de \$0"
+
 # Registrar un libro nuevo con varios géneros y autor
 REG_LIBRO_RES=$(curl -s -X POST "$BASE_URL/bodega/libros"   -H "Authorization: Bearer $TOKEN_BODEGA"   -H "Content-Type: application/json"   -d '{"codigo_ean": 9786071234568, "sku": 555555, "nombre_libro": "Pedro Paramo", "id_proveedor": 1, "generos": [15, 16], "autores": [2], "precio": 280.00, "cantidad": 0, "id_mueble": 111}')
 echo "$REG_LIBRO_RES" | grep -q '"success":true' || { echo "Error registrando libro nuevo: $REG_LIBRO_RES"; exit 1; }
@@ -335,6 +340,17 @@ else
   echo "  ✓ Bitácora consultada correctamente"
 fi
 
+# Muebles: el código empieza con P- (piso) o B- (bodega) y la capacidad no baja de lo ocupado
+MAL_COD=$(curl -s -X POST "$BASE_URL/muebles" -H "Authorization: Bearer $TOKEN_JEFE"   -H "Content-Type: application/json" -d '{"id_genero": 11, "id_ubicacion": 1, "codigo_mueble": "B-099", "nombre_mueble": "Mueble e2e", "capacidad": 50}')
+echo "$MAL_COD" | grep -q 'debe empezar con' || { echo "Error: se aceptó un código B- en piso: $MAL_COD"; exit 1; }
+MAL_COD=$(curl -s -X POST "$BASE_URL/muebles" -H "Authorization: Bearer $TOKEN_JEFE"   -H "Content-Type: application/json" -d '{"id_genero": 11, "id_ubicacion": 2, "codigo_mueble": "X-099", "nombre_mueble": "Mueble e2e", "capacidad": 50}')
+echo "$MAL_COD" | grep -q 'debe empezar con' || { echo "Error: se aceptó un código sin P-/B-: $MAL_COD"; exit 1; }
+echo "  ✓ El código del mueble debe empezar con P- (piso) o B- (bodega)"
+
+CAP=$(curl -s -X PUT "$BASE_URL/muebles/111" -H "Authorization: Bearer $TOKEN_JEFE"   -H "Content-Type: application/json" -d '{"id_genero": 11, "id_ubicacion": 2, "codigo_mueble": "B-011", "nombre_mueble": "Psicologia - Bodega", "capacidad": 1}')
+echo "$CAP" | grep -q 'no puede ser menor a las' || { echo "Error: se bajó la capacidad por debajo de lo ocupado: $CAP"; exit 1; }
+echo "  ✓ La capacidad no puede quedar por debajo de las piezas que ya tiene el mueble"
+
 # -----------------------------------------------------------------------------
 # 9. INVENTARIO MENSUAL Y SOLICITUDES DE EDITORIAL (diagrama, paso 7)
 # -----------------------------------------------------------------------------
@@ -342,6 +358,9 @@ echo "[9/11] Probando inventario mensual y solicitudes de editorial..."
 SOL=$(curl -s -X POST "$BASE_URL/jefe/solicitudes-editorial" -H "Authorization: Bearer $TOKEN_JEFE"   -H "Content-Type: application/json" -d '{"id_proveedor": 2, "referencia": "Correo de prueba e2e", "eans": [9771234567010]}')
 echo "$SOL" | grep -q '"success":true' || { echo "Error registrando solicitud: $SOL"; exit 1; }
 echo "  ✓ Solicitud de la editorial registrada"
+EXJ=$(curl -s "$BASE_URL/jefe/existencias?q=9771234567010" -H "Authorization: Bearer $TOKEN_JEFE")
+echo "$EXJ" | grep -q '"id_proveedor":2' || { echo "Error: el Jefe no consulta títulos y editorial: $EXJ"; exit 1; }
+echo "  ✓ El Jefe consulta título, stock y editorial al capturar la solicitud"
 INV=$(curl -s -X POST "$BASE_URL/vendedor/inventarios" -H "Authorization: Bearer $TOKEN_VENDEDOR")
 INV_ID=$(echo "$INV" | grep -o '"id_inventario":[0-9]*' | head -n1 | cut -d':' -f2)
 [ -n "$INV_ID" ] || { echo "Error abriendo inventario: $INV"; exit 1; }
@@ -349,6 +368,9 @@ DOBLE=$(curl -s -X POST "$BASE_URL/vendedor/inventarios" -H "Authorization: Bear
 echo "$DOBLE" | grep -q '"success":false' || { echo "Error: se abrieron dos inventarios: $DOBLE"; exit 1; }
 echo "  ✓ Inventario #$INV_ID abierto (solo uno a la vez)"
 curl -s -X PUT "$BASE_URL/vendedor/inventarios/$INV_ID/conteos" -H "Authorization: Bearer $TOKEN_VENDEDOR"   -H "Content-Type: application/json" -d '{"codigo_ean": 9771234567010, "cantidad": 3}' > /dev/null
+ACT=$(curl -s "$BASE_URL/vendedor/inventarios/actual" -H "Authorization: Bearer $TOKEN_VENDEDOR")
+echo "$ACT" | grep -q '"codigo_ean":9771234567010,[^}]*"motivo_devolucion":"SOLICITUD_EDITORIAL"' || { echo "Error: al contar no se avisa que va a devolución: $ACT"; exit 1; }
+echo "  ✓ Mientras cuenta, el vendedor ve qué títulos separar para devolución"
 CIERRE=$(curl -s -X POST "$BASE_URL/vendedor/inventarios/$INV_ID/cerrar" -H "Authorization: Bearer $TOKEN_VENDEDOR")
 echo "$CIERRE" | grep -q '"estado":"CERRADO"' || { echo "Error cerrando inventario: $CIERRE"; exit 1; }
 echo "$CIERRE" | grep -q '"codigo_ean":9771234567010,[^}]*"motivo_devolucion":"SOLICITUD_EDITORIAL"'   || { echo "Error: no se marcó lo que pidió la editorial: $CIERRE"; exit 1; }
