@@ -25,83 +25,176 @@ impl ProductoRepo {
     // Operaciones de Libros y Revistas (Producto)
     // ========================================================================
 
+    // ------------------------------------------------------------------
+    // Helpers internos (esquema unificado: productos + subtabla + existencias)
+    // ------------------------------------------------------------------
+
+    /// Stock total de un producto dentro de una ubicación (Piso/Bodega) y el mueble con más piezas.
+    async fn stock_en_ubicacion(
+        pool: &DbPool,
+        codigo_ean: i64,
+        id_ubicacion: i32,
+    ) -> Result<(i32, i32), AppError> {
+        let rows = sqlx::query(
+            "SELECT e.id_mueble, e.cantidad FROM existencias e \
+             JOIN mueble m ON m.id_mueble = e.id_mueble \
+             WHERE e.codigo_ean = ? AND m.id_ubicacion = ? ORDER BY e.cantidad DESC",
+        )
+        .bind(codigo_ean)
+        .bind(id_ubicacion)
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)?;
+
+        let id_mueble = rows.first().map(|r| row_get_i32(r, "id_mueble")).unwrap_or(0);
+        let total: i32 = rows.iter().map(|r| row_get_i32(r, "cantidad")).sum();
+        Ok((id_mueble, total))
+    }
+
+    async fn generos_de(pool: &DbPool, codigo_ean: i64) -> Result<(Vec<i32>, Option<String>), AppError> {
+        let rows = sqlx::query(
+            "SELECT pg.id_genero, g.genero_literario FROM productos_has_genero pg \
+             JOIN genero g ON pg.id_genero = g.id_genero WHERE pg.codigo_ean = ?",
+        )
+        .bind(codigo_ean)
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)?;
+        let ids = rows.iter().map(|r| row_get_i32(r, "id_genero")).collect();
+        let nombres: Vec<String> = rows.iter().map(|r| r.get("genero_literario")).collect();
+        Ok((ids, if nombres.is_empty() { None } else { Some(nombres.join(", ")) }))
+    }
+
+    /// Valida que el mueble exista, pertenezca a la ubicación y tenga espacio para `cantidad` piezas.
+    async fn validar_mueble(
+        tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
+        id_mueble: i32,
+        id_ubicacion: i32,
+        cantidad: i32,
+    ) -> Result<(), AppError> {
+        let row = sqlx::query(
+            "SELECT id_ubicacion, capacidad, \
+             COALESCE((SELECT SUM(e.cantidad) FROM existencias e WHERE e.id_mueble = mueble.id_mueble), 0) AS ocupado \
+             FROM mueble WHERE id_mueble = ? FOR UPDATE",
+        )
+        .bind(id_mueble)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or_else(|| AppError::NotFound(format!("El mueble {} no existe", id_mueble)))?;
+
+        if row_get_i32(&row, "id_ubicacion") != id_ubicacion {
+            return Err(AppError::BadRequest(format!(
+                "El mueble {} no pertenece a la ubicación seleccionada",
+                id_mueble
+            )));
+        }
+        let capacidad = row_get_i32(&row, "capacidad");
+        let ocupado = row_get_i32(&row, "ocupado");
+        if capacidad > 0 && ocupado + cantidad > capacidad {
+            return Err(AppError::Conflict(format!(
+                "El mueble {} no tiene espacio suficiente (capacidad {}, ocupado {}, se intentan agregar {})",
+                id_mueble, capacidad, ocupado, cantidad
+            )));
+        }
+        Ok(())
+    }
+
+    async fn sumar_existencia(
+        tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
+        codigo_ean: i64,
+        id_mueble: i32,
+        cantidad: i32,
+    ) -> Result<(), AppError> {
+        if cantidad <= 0 {
+            return Ok(());
+        }
+        sqlx::query(
+            "INSERT INTO existencias (codigo_ean, id_mueble, cantidad) VALUES (?, ?, ?) \
+             ON DUPLICATE KEY UPDATE cantidad = cantidad + VALUES(cantidad)",
+        )
+        .bind(codigo_ean)
+        .bind(id_mueble)
+        .bind(cantidad)
+        .execute(&mut **tx)
+        .await
+        .map_err(AppError::Database)?;
+        Ok(())
+    }
+
+    async fn reemplazar_generos(
+        tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
+        codigo_ean: i64,
+        generos: &[i32],
+    ) -> Result<(), AppError> {
+        if generos.is_empty() {
+            return Ok(());
+        }
+        sqlx::query("DELETE FROM productos_has_genero WHERE codigo_ean = ?")
+            .bind(codigo_ean)
+            .execute(&mut **tx)
+            .await
+            .map_err(AppError::Database)?;
+        for &g in generos {
+            sqlx::query("INSERT IGNORE INTO productos_has_genero (codigo_ean, id_genero) VALUES (?, ?)")
+                .bind(codigo_ean)
+                .bind(g)
+                .execute(&mut **tx)
+                .await
+                .map_err(AppError::Database)?;
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // Libros
+    // ------------------------------------------------------------------
+
     pub async fn buscar_libro(
         pool: &DbPool,
         codigo_ean: i64,
         id_ubicacion: i32,
     ) -> Result<Option<Libro>, AppError> {
         let row = sqlx::query(
-            r#"
-            SELECT codigo_ean, id_mueble, id_proveedor, id_ubicacion,
-                   nombre_libro, precio, cantidad, SKU
-            FROM libros
-            WHERE codigo_ean = ? AND id_ubicacion = ?
-            "#,
+            "SELECT p.codigo_ean, p.id_proveedor, p.precio, p.SKU, l.nombre_libro \
+             FROM productos p JOIN libros l ON l.codigo_ean = p.codigo_ean \
+             WHERE p.codigo_ean = ?",
         )
         .bind(codigo_ean)
-        .bind(id_ubicacion)
         .fetch_optional(pool)
         .await
         .map_err(AppError::Database)?;
 
-        if let Some(r) = row {
-            let gen_rows = sqlx::query(
-                "SELECT pg.id_genero, g.genero_literario FROM productos_has_genero pg JOIN genero g ON pg.id_genero = g.id_genero WHERE pg.codigo_ean = ?"
-            )
-            .bind(codigo_ean)
-            .fetch_all(pool)
-            .await
-            .map_err(AppError::Database)?;
+        let Some(r) = row else { return Ok(None) };
 
-            let generos: Vec<i32> = gen_rows
-                .iter()
-                .map(|gr| row_get_i32(gr, "id_genero"))
-                .collect();
-            let generos_nombres: Vec<String> = gen_rows
-                .iter()
-                .map(|gr| gr.get("genero_literario"))
-                .collect();
+        let (generos, generos_nombres) = Self::generos_de(pool, codigo_ean).await?;
+        let aut_rows = sqlx::query(
+            "SELECT al.id_autores, CONCAT(a.nombre, ' ', a.apellidos) AS autor_nom \
+             FROM autores_has_libros al JOIN autores a ON al.id_autores = a.id_autores \
+             WHERE al.codigo_ean = ?",
+        )
+        .bind(codigo_ean)
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)?;
+        let autores: Vec<i32> = aut_rows.iter().map(|ar| row_get_i32(ar, "id_autores")).collect();
+        let autores_nombres: Vec<String> = aut_rows.iter().map(|ar| ar.get("autor_nom")).collect();
+        let (id_mueble, cantidad) = Self::stock_en_ubicacion(pool, codigo_ean, id_ubicacion).await?;
 
-            let aut_rows = sqlx::query(
-                "SELECT al.id_autores, CONCAT(a.nombre, ' ', a.apellidos) as autor_nom FROM autores_has_libros al JOIN autores a ON al.id_autores = a.id_autores WHERE al.codigo_ean = ?"
-            )
-            .bind(codigo_ean)
-            .fetch_all(pool)
-            .await
-            .map_err(AppError::Database)?;
-
-            let autores: Vec<i32> = aut_rows
-                .iter()
-                .map(|ar| row_get_i32(ar, "id_autores"))
-                .collect();
-            let autores_nombres: Vec<String> =
-                aut_rows.iter().map(|ar| ar.get("autor_nom")).collect();
-
-            Ok(Some(Libro {
-                codigo_ean: row_get_i64(&r, "codigo_ean"),
-                id_mueble: row_get_i32(&r, "id_mueble"),
-                id_proveedor: row_get_i32(&r, "id_proveedor"),
-                id_ubicacion: row_get_i32(&r, "id_ubicacion"),
-                nombre_libro: r.get("nombre_libro"),
-                precio: row_get_f64(&r, "precio"),
-                cantidad: row_get_i32(&r, "cantidad"),
-                sku: row_get_opt_i64(&r, "SKU"),
-                generos,
-                autores,
-                generos_nombres: if generos_nombres.is_empty() {
-                    None
-                } else {
-                    Some(generos_nombres.join(", "))
-                },
-                autores_nombres: if autores_nombres.is_empty() {
-                    None
-                } else {
-                    Some(autores_nombres.join(", "))
-                },
-            }))
-        } else {
-            Ok(None)
-        }
+        Ok(Some(Libro {
+            codigo_ean: row_get_i64(&r, "codigo_ean"),
+            id_mueble,
+            id_proveedor: row_get_i32(&r, "id_proveedor"),
+            id_ubicacion,
+            nombre_libro: r.get("nombre_libro"),
+            precio: row_get_f64(&r, "precio"),
+            cantidad,
+            sku: row_get_opt_i64(&r, "SKU"),
+            generos,
+            autores,
+            generos_nombres,
+            autores_nombres: if autores_nombres.is_empty() { None } else { Some(autores_nombres.join(", ")) },
+        }))
     }
 
     pub async fn guardar_o_actualizar_libro(
@@ -109,112 +202,121 @@ impl ProductoRepo {
         req: &RegistrarLibroRequest,
         ubicacion: i32,
     ) -> Result<Libro, AppError> {
-        let existing = Self::buscar_libro(pool, req.codigo_ean, ubicacion).await?;
-
         let mut final_generos = req.generos.clone();
         if final_generos.is_empty()
-            && let Some(ig) = req.id_genero {
-                final_generos.push(ig);
-            }
+            && let Some(ig) = req.id_genero
+        {
+            final_generos.push(ig);
+        }
 
+        let mut tx = pool.begin().await.map_err(AppError::Database)?;
+
+        // Autores: por id, o (compatibilidad) por nombre -> buscar/crear
         let mut final_autores = req.autores.clone();
         if final_autores.is_empty()
-            && let Some(ref nombre_autor) = req.autor {
-                let clean = nombre_autor.trim();
-                if !clean.is_empty() {
-                    let row_aut = sqlx::query("SELECT id_autor FROM autores WHERE CONCAT(nombre, ' ', apellidos) LIKE ? OR nombre LIKE ?")
-                        .bind(clean)
-                        .bind(clean)
-                        .fetch_optional(pool)
+            && let Some(ref nombre_autor) = req.autor
+        {
+            let clean = nombre_autor.trim();
+            if !clean.is_empty() {
+                let found = sqlx::query(
+                    "SELECT id_autores FROM autores WHERE CONCAT(nombre, ' ', apellidos) = ? OR nombre = ? LIMIT 1",
+                )
+                .bind(clean)
+                .bind(clean)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
+                if let Some(ra) = found {
+                    final_autores.push(row_get_i32(&ra, "id_autores"));
+                } else {
+                    let parts: Vec<&str> = clean.split_whitespace().collect();
+                    let (nom, ape) = if parts.len() > 1 {
+                        (parts[0].to_string(), parts[1..].join(" "))
+                    } else {
+                        (clean.to_string(), ".".to_string())
+                    };
+                    let ins = sqlx::query("INSERT INTO autores (nombre, apellidos, estado) VALUES (?, ?, TRUE)")
+                        .bind(nom)
+                        .bind(ape)
+                        .execute(&mut *tx)
                         .await
                         .map_err(AppError::Database)?;
-
-                    if let Some(ra) = row_aut {
-                        final_autores.push(row_get_i32(&ra, "id_autor"));
-                    } else {
-                        let parts: Vec<&str> = clean.split_whitespace().collect();
-                        let (nom, ape) = if parts.len() > 1 {
-                            (parts[0], parts[1..].join(" "))
-                        } else {
-                            (clean, ".".to_string())
-                        };
-                        let ins_aut =
-                            sqlx::query("INSERT INTO autores (nombre, apellidos) VALUES (?, ?)")
-                                .bind(nom)
-                                .bind(ape)
-                                .execute(pool)
-                                .await
-                                .map_err(AppError::Database)?;
-                        final_autores.push(ins_aut.last_insert_id() as i32);
-                    }
+                    final_autores.push(ins.last_insert_id() as i32);
                 }
             }
+        }
 
-        let libro_resultado = if let Some(libro_actual) = existing {
-            let nueva_cantidad = libro_actual.cantidad + req.cantidad;
-            sqlx::query(
-                "UPDATE libros SET cantidad = ?, precio = ? WHERE codigo_ean = ? AND id_ubicacion = ?"
-            )
-            .bind(nueva_cantidad)
-            .bind(req.precio)
+        let existe = sqlx::query("SELECT 1 FROM productos WHERE codigo_ean = ? FOR UPDATE")
             .bind(req.codigo_ean)
-            .bind(ubicacion)
-            .execute(pool)
+            .fetch_optional(&mut *tx)
             .await
-            .map_err(AppError::Database)?;
+            .map_err(AppError::Database)?
+            .is_some();
 
-            Libro {
-                cantidad: nueva_cantidad,
-                precio: req.precio,
-                generos: final_generos.clone(),
-                autores: final_autores.clone(),
-                ..libro_actual
-            }
+        if existe {
+            sqlx::query("UPDATE productos SET precio = ?, id_proveedor = ?, SKU = COALESCE(?, SKU) WHERE codigo_ean = ?")
+                .bind(req.precio)
+                .bind(req.id_proveedor)
+                .bind(req.sku)
+                .bind(req.codigo_ean)
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
+            sqlx::query("UPDATE libros SET nombre_libro = ? WHERE codigo_ean = ?")
+                .bind(&req.nombre_libro)
+                .bind(req.codigo_ean)
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
         } else {
             sqlx::query(
-                r#"
-                INSERT INTO libros (codigo_ean, id_mueble, id_proveedor, id_ubicacion,
-                                   nombre_libro, precio, cantidad, SKU)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                "#,
+                "INSERT INTO productos (codigo_ean, id_proveedor, tipo_producto, SKU, precio) VALUES (?, ?, 'Libro', ?, ?)",
             )
             .bind(req.codigo_ean)
-            .bind(req.id_mueble)
             .bind(req.id_proveedor)
-            .bind(ubicacion)
-            .bind(&req.nombre_libro)
-            .bind(req.precio)
-            .bind(req.cantidad)
             .bind(req.sku)
-            .execute(pool)
+            .bind(req.precio)
+            .execute(&mut *tx)
             .await
             .map_err(AppError::Database)?;
-
-            Libro {
-                codigo_ean: req.codigo_ean,
-                id_mueble: req.id_mueble,
-                id_proveedor: req.id_proveedor,
-                id_ubicacion: ubicacion,
-                nombre_libro: req.nombre_libro.clone(),
-                precio: req.precio,
-                cantidad: req.cantidad,
-                sku: req.sku,
-                generos: final_generos.clone(),
-                autores: final_autores.clone(),
-                generos_nombres: None,
-                autores_nombres: None,
-            }
-        };
-
-        if !final_generos.is_empty() {
-            GeneroRepo::asociar_generos_libro(pool, req.codigo_ean, &final_generos).await?;
+            sqlx::query("INSERT INTO libros (codigo_ean, nombre_libro) VALUES (?, ?)")
+                .bind(req.codigo_ean)
+                .bind(&req.nombre_libro)
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
         }
+
+        Self::reemplazar_generos(&mut tx, req.codigo_ean, &final_generos).await?;
         if !final_autores.is_empty() {
-            AutorRepo::asociar_autores_libro(pool, req.codigo_ean, &final_autores).await?;
+            sqlx::query("DELETE FROM autores_has_libros WHERE codigo_ean = ?")
+                .bind(req.codigo_ean)
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
+            for &a in &final_autores {
+                sqlx::query("INSERT IGNORE INTO autores_has_libros (codigo_ean, id_autores) VALUES (?, ?)")
+                    .bind(req.codigo_ean)
+                    .bind(a)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(AppError::Database)?;
+            }
         }
 
-        Ok(libro_resultado)
+        Self::validar_mueble(&mut tx, req.id_mueble, ubicacion, req.cantidad).await?;
+        Self::sumar_existencia(&mut tx, req.codigo_ean, req.id_mueble, req.cantidad).await?;
+
+        tx.commit().await.map_err(AppError::Database)?;
+
+        Self::buscar_libro(pool, req.codigo_ean, ubicacion)
+            .await?
+            .ok_or_else(|| AppError::Internal("No se pudo recuperar el libro recién guardado".into()))
     }
+
+    // ------------------------------------------------------------------
+    // Revistas
+    // ------------------------------------------------------------------
 
     pub async fn buscar_revista(
         pool: &DbPool,
@@ -222,61 +324,35 @@ impl ProductoRepo {
         id_ubicacion: i32,
     ) -> Result<Option<Revista>, AppError> {
         let row = sqlx::query(
-            r#"
-            SELECT codigo_ean, id_mueble, id_proveedor, id_ubicacion,
-                   nombre_revista, numero_edicion, periodicidad, precio, cantidad, SKU
-            FROM revistas
-            WHERE codigo_ean = ? AND id_ubicacion = ?
-            "#,
+            "SELECT p.codigo_ean, p.id_proveedor, p.precio, p.SKU, \
+                    r.id_editorial, r.nombre_revista, r.numero_edicion, r.periodicidad \
+             FROM productos p JOIN revistas r ON r.codigo_ean = p.codigo_ean \
+             WHERE p.codigo_ean = ?",
         )
         .bind(codigo_ean)
-        .bind(id_ubicacion)
         .fetch_optional(pool)
         .await
         .map_err(AppError::Database)?;
 
-        if let Some(r) = row {
-            let gen_rows = sqlx::query(
-                "SELECT pg.id_genero, g.genero_literario FROM productos_has_genero pg JOIN genero g ON pg.id_genero = g.id_genero WHERE pg.codigo_ean = ?"
-            )
-            .bind(codigo_ean)
-            .fetch_all(pool)
-            .await
-            .map_err(AppError::Database)?;
+        let Some(r) = row else { return Ok(None) };
+        let (generos, generos_nombres) = Self::generos_de(pool, codigo_ean).await?;
+        let (id_mueble, cantidad) = Self::stock_en_ubicacion(pool, codigo_ean, id_ubicacion).await?;
 
-            let generos: Vec<i32> = gen_rows
-                .iter()
-                .map(|gr| row_get_i32(gr, "id_genero"))
-                .collect();
-            let generos_nombres: Vec<String> = gen_rows
-                .iter()
-                .map(|gr| gr.get("genero_literario"))
-                .collect();
-
-            Ok(Some(Revista {
-                codigo_ean: row_get_i64(&r, "codigo_ean"),
-                id_ubicacion: row_get_i32(&r, "id_ubicacion"),
-                id_mueble: row_get_i32(&r, "id_mueble"),
-                id_proveedor: row_get_i32(&r, "id_proveedor"),
-                nombre_revista: r.get("nombre_revista"),
-                numero_edicion: row_get_opt_i32(&r, "numero_edicion"),
-                periodicidad: r
-                    .try_get::<Option<String>, _>("periodicidad")
-                    .ok()
-                    .flatten(),
-                precio: row_get_f64(&r, "precio"),
-                cantidad: row_get_i32(&r, "cantidad"),
-                sku: row_get_opt_i64(&r, "SKU"),
-                generos,
-                generos_nombres: if generos_nombres.is_empty() {
-                    None
-                } else {
-                    Some(generos_nombres.join(", "))
-                },
-            }))
-        } else {
-            Ok(None)
-        }
+        Ok(Some(Revista {
+            codigo_ean: row_get_i64(&r, "codigo_ean"),
+            id_ubicacion,
+            id_mueble,
+            id_proveedor: row_get_i32(&r, "id_proveedor"),
+            id_editorial: row_get_i32(&r, "id_editorial"),
+            nombre_revista: r.get("nombre_revista"),
+            numero_edicion: row_get_opt_i32(&r, "numero_edicion"),
+            periodicidad: r.try_get::<Option<String>, _>("periodicidad").ok().flatten(),
+            precio: row_get_f64(&r, "precio"),
+            cantidad,
+            sku: row_get_opt_i64(&r, "SKU"),
+            generos,
+            generos_nombres,
+        }))
     }
 
     pub async fn guardar_o_actualizar_revista(
@@ -284,70 +360,78 @@ impl ProductoRepo {
         req: &RegistrarRevistaRequest,
         ubicacion: i32,
     ) -> Result<Revista, AppError> {
-        let existing = Self::buscar_revista(pool, req.codigo_ean, ubicacion).await?;
+        let mut tx = pool.begin().await.map_err(AppError::Database)?;
 
-        let revista_resultado = if let Some(revista_actual) = existing {
-            let nueva_cantidad = revista_actual.cantidad + req.cantidad;
-            sqlx::query(
-                "UPDATE revistas SET cantidad = ?, precio = ? WHERE codigo_ean = ? AND id_ubicacion = ?"
-            )
-            .bind(nueva_cantidad)
-            .bind(req.precio)
+        let existe = sqlx::query("SELECT id_editorial FROM revistas WHERE codigo_ean = ? FOR UPDATE")
             .bind(req.codigo_ean)
-            .bind(ubicacion)
-            .execute(pool)
+            .fetch_optional(&mut *tx)
             .await
             .map_err(AppError::Database)?;
 
-            Revista {
-                cantidad: nueva_cantidad,
-                precio: req.precio,
-                generos: req.generos.clone(),
-                ..revista_actual
-            }
-        } else {
-            sqlx::query(
-                r#"
-                INSERT INTO revistas (codigo_ean, id_ubicacion, id_mueble, id_proveedor,
-                                     nombre_revista, numero_edicion, periodicidad, precio, cantidad, SKU)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                "#,
-            )
-            .bind(req.codigo_ean)
-            .bind(ubicacion)
-            .bind(req.id_mueble)
-            .bind(req.id_proveedor)
-            .bind(&req.nombre_revista)
-            .bind(req.numero_edicion)
-            .bind(&req.periodicidad)
-            .bind(req.precio)
-            .bind(req.cantidad)
-            .bind(req.sku)
-            .execute(pool)
-            .await
-            .map_err(AppError::Database)?;
-
-            Revista {
-                codigo_ean: req.codigo_ean,
-                id_ubicacion: ubicacion,
-                id_mueble: req.id_mueble,
-                id_proveedor: req.id_proveedor,
-                nombre_revista: req.nombre_revista.clone(),
-                numero_edicion: req.numero_edicion,
-                periodicidad: req.periodicidad.clone(),
-                precio: req.precio,
-                cantidad: req.cantidad,
-                sku: req.sku,
-                generos: req.generos.clone(),
-                generos_nombres: None,
+        // La editorial es obligatoria al crear; al actualizar se conserva si no se envía.
+        let id_editorial = match (req.id_editorial, &existe) {
+            (Some(e), _) => e,
+            (None, Some(r)) => row_get_i32(r, "id_editorial"),
+            (None, None) => {
+                return Err(AppError::BadRequest(
+                    "La editorial (id_editorial) es obligatoria para registrar una revista".to_string(),
+                ));
             }
         };
 
-        if !req.generos.is_empty() {
-            GeneroRepo::asociar_generos_revista(pool, req.codigo_ean, &req.generos).await?;
+        if existe.is_some() {
+            sqlx::query("UPDATE productos SET precio = ?, id_proveedor = ?, SKU = COALESCE(?, SKU) WHERE codigo_ean = ?")
+                .bind(req.precio)
+                .bind(req.id_proveedor)
+                .bind(req.sku)
+                .bind(req.codigo_ean)
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
+            sqlx::query(
+                "UPDATE revistas SET id_editorial = ?, nombre_revista = ?, numero_edicion = ?, periodicidad = ? WHERE codigo_ean = ?",
+            )
+            .bind(id_editorial)
+            .bind(&req.nombre_revista)
+            .bind(req.numero_edicion)
+            .bind(&req.periodicidad)
+            .bind(req.codigo_ean)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+        } else {
+            sqlx::query(
+                "INSERT INTO productos (codigo_ean, id_proveedor, tipo_producto, SKU, precio) VALUES (?, ?, 'Revista', ?, ?)",
+            )
+            .bind(req.codigo_ean)
+            .bind(req.id_proveedor)
+            .bind(req.sku)
+            .bind(req.precio)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+            sqlx::query(
+                "INSERT INTO revistas (codigo_ean, id_editorial, nombre_revista, numero_edicion, periodicidad) VALUES (?, ?, ?, ?, ?)",
+            )
+            .bind(req.codigo_ean)
+            .bind(id_editorial)
+            .bind(&req.nombre_revista)
+            .bind(req.numero_edicion)
+            .bind(&req.periodicidad)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
         }
 
-        Ok(revista_resultado)
+        Self::reemplazar_generos(&mut tx, req.codigo_ean, &req.generos).await?;
+        Self::validar_mueble(&mut tx, req.id_mueble, ubicacion, req.cantidad).await?;
+        Self::sumar_existencia(&mut tx, req.codigo_ean, req.id_mueble, req.cantidad).await?;
+
+        tx.commit().await.map_err(AppError::Database)?;
+
+        Self::buscar_revista(pool, req.codigo_ean, ubicacion)
+            .await?
+            .ok_or_else(|| AppError::Internal("No se pudo recuperar la revista recién guardada".into()))
     }
 
     // ========================================================================
@@ -515,6 +599,7 @@ impl ProductoRepo {
         id_usuario_aprueba: i64,
         nuevo_estado: &str,
         aprobar: bool,
+        observaciones: Option<&str>,
     ) -> Result<(), AppError> {
         DevolucionRepo::actualizar_estado_devolucion(
             pool,
@@ -522,6 +607,7 @@ impl ProductoRepo {
             id_usuario_aprueba,
             nuevo_estado,
             aprobar,
+            observaciones,
         )
         .await
     }

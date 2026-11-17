@@ -35,7 +35,8 @@ impl VentaService {
             actor_id,
             "BAJA POR VENTA",
             &format!(
-                "Venta #{} completada. Cliente: '{}'. Piezas: {}, Total: ${:.2}",
+                // Estilo del diseño 7: "Venta completada Ticket #1084"
+                "Venta completada Ticket #{} · {} · {} pza(s) · ${:.2}",
                 venta.id_venta, cliente_limpio, venta.total_articulos, venta.total
             ),
         )

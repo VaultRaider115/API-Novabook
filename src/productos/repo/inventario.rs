@@ -1,7 +1,7 @@
 use sqlx::Row;
 
 use crate::{
-    db::{DbPool, row_get_f64, row_get_i64, row_get_opt_i64},
+    db::{DbPool, row_get_f64, row_get_i64, row_get_opt_i32, row_get_opt_i64},
     error::AppError,
     productos::model::{ExistenciaInventario, FiltroExistencias},
 };
@@ -16,7 +16,7 @@ impl InventarioRepo {
         let mut sql = String::from(
             r#"
             SELECT l.codigo_ean, p.SKU as sku, l.nombre_libro as titulo, 'Libro' as tipo_producto,
-                   p.precio, pr.nombre_proveedor as proveedor,
+                   p.precio, p.id_proveedor, pr.nombre_proveedor as proveedor,
                    COALESCE((SELECT GROUP_CONCAT(DISTINCT CONCAT(a.nombre, ' ', a.apellidos) SEPARATOR ', ')
                              FROM autores_has_libros al JOIN autores a ON a.id_autores = al.id_autores
                              WHERE al.codigo_ean = l.codigo_ean), 'Sin Autor') as autor_o_editorial,
@@ -34,23 +34,27 @@ impl InventarioRepo {
             "#,
         );
 
-        if let Some(ref q) = params.q {
-            let q_clean = q.trim();
-            if !q_clean.is_empty() {
-                sql.push_str(&format!(
-                    " AND (l.nombre_libro LIKE '%{0}%' OR CAST(l.codigo_ean AS CHAR) LIKE '%{0}%' OR EXISTS (SELECT 1 FROM autores_has_libros al JOIN autores a ON a.id_autores = al.id_autores WHERE al.codigo_ean = l.codigo_ean AND (a.nombre LIKE '%{0}%' OR a.apellidos LIKE '%{0}%')))",
-                    q_clean.replace('\'', "''")
-                ));
-            }
+        let patron: Option<String> = params
+            .q
+            .as_deref()
+            .map(str::trim)
+            .filter(|q| !q.is_empty())
+            .map(|q| format!("%{}%", q));
+        if patron.is_some() {
+            sql.push_str(
+                " AND (l.nombre_libro LIKE ? OR CAST(l.codigo_ean AS CHAR) LIKE ? OR CAST(p.SKU AS CHAR) LIKE ? \
+                  OR EXISTS (SELECT 1 FROM autores_has_libros al JOIN autores a ON a.id_autores = al.id_autores \
+                             WHERE al.codigo_ean = l.codigo_ean AND (a.nombre LIKE ? OR a.apellidos LIKE ? OR CONCAT(a.nombre, ' ', a.apellidos) LIKE ?)))",
+            );
         }
-        sql.push_str(" GROUP BY l.codigo_ean, p.SKU, l.nombre_libro, p.precio, pr.nombre_proveedor");
+        sql.push_str(" GROUP BY l.codigo_ean, p.SKU, l.nombre_libro, p.precio, p.id_proveedor, pr.nombre_proveedor");
 
         sql.push_str(
             r#"
             UNION ALL
             SELECT r.codigo_ean, p.SKU as sku, r.nombre_revista as titulo, 'Revista' as tipo_producto,
-                   p.precio, pr.nombre_proveedor as proveedor,
-                   COALESCE(r.periodicidad, 'Mensual') as autor_o_editorial,
+                   p.precio, p.id_proveedor, pr.nombre_proveedor as proveedor,
+                   COALESCE(ed.nombre_editorial, 'Sin editorial') as autor_o_editorial,
                    COALESCE((SELECT GROUP_CONCAT(DISTINCT g.genero_literario SEPARATOR ', ')
                              FROM productos_has_genero pg JOIN genero g ON g.id_genero = pg.id_genero
                              WHERE pg.codigo_ean = r.codigo_ean), 'General') as generos,
@@ -58,6 +62,7 @@ impl InventarioRepo {
                    COALESCE(SUM(CASE WHEN m.id_ubicacion = 2 THEN e.cantidad ELSE 0 END), 0) as stock_bodega
             FROM revistas r
             JOIN productos p ON p.codigo_ean = r.codigo_ean
+            LEFT JOIN editorial ed ON ed.id_editorial = r.id_editorial
             LEFT JOIN proveedor pr ON p.id_proveedor = pr.id_proveedor
             LEFT JOIN existencias e ON e.codigo_ean = r.codigo_ean
             LEFT JOIN mueble m ON m.id_mueble = e.id_mueble
@@ -65,19 +70,25 @@ impl InventarioRepo {
             "#,
         );
 
-        if let Some(ref q) = params.q {
-            let q_clean = q.trim();
-            if !q_clean.is_empty() {
-                sql.push_str(&format!(
-                    " AND (r.nombre_revista LIKE '%{0}%' OR r.periodicidad LIKE '%{0}%' OR CAST(r.codigo_ean AS CHAR) LIKE '%{0}%')",
-                    q_clean.replace('\'', "''")
-                ));
-            }
+        if patron.is_some() {
+            sql.push_str(
+                " AND (r.nombre_revista LIKE ? OR ed.nombre_editorial LIKE ? OR CAST(r.codigo_ean AS CHAR) LIKE ? OR CAST(p.SKU AS CHAR) LIKE ?)",
+            );
         }
-        sql.push_str(" GROUP BY r.codigo_ean, p.SKU, r.nombre_revista, p.precio, pr.nombre_proveedor, r.periodicidad");
+        sql.push_str(" GROUP BY r.codigo_ean, p.SKU, r.nombre_revista, p.precio, p.id_proveedor, pr.nombre_proveedor, ed.nombre_editorial");
         sql.push_str(" ORDER BY titulo ASC");
 
-        let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+        // Solo se concatenan fragmentos fijos; el texto del usuario siempre va por bind.
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
+        if let Some(ref pat) = patron {
+            for _ in 0..6 {
+                query = query.bind(pat);
+            }
+            for _ in 0..4 {
+                query = query.bind(pat);
+            }
+        }
+        let rows = query
             .fetch_all(pool)
             .await
             .map_err(AppError::Database)?;
@@ -113,6 +124,7 @@ impl InventarioRepo {
                     stock_bodega: stock_bodega as i32,
                     stock_total,
                     precio: row_get_f64(&r, "precio"),
+                    id_proveedor: row_get_opt_i32(&r, "id_proveedor"),
                     proveedor: r.get("proveedor"),
                     autor_o_editorial: r.get("autor_o_editorial"),
                     generos: r.get("generos"),

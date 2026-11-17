@@ -30,6 +30,17 @@ PREPARE stmt FROM @drop_view_proveedor;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+DROP TABLE IF EXISTS `detalle_requisicion`;
+DROP TABLE IF EXISTS `requisicion`;
+DROP TABLE IF EXISTS `detalle_incidencia_compra`;
+DROP TABLE IF EXISTS `incidencia_compra`;
+DROP TABLE IF EXISTS `detalle_inventario`;
+DROP TABLE IF EXISTS `inventario`;
+DROP TABLE IF EXISTS `detalle_solicitud_editorial`;
+DROP TABLE IF EXISTS `solicitud_editorial`;
+DROP TABLE IF EXISTS `detalle_devolucion_cliente`;
+DROP TABLE IF EXISTS `devolucion_cliente`;
+DROP TABLE IF EXISTS `apartados`;
 DROP TABLE IF EXISTS `detalle_devolucion`;
 DROP TABLE IF EXISTS `devolucion`;
 DROP TABLE IF EXISTS `motivo`;
@@ -260,12 +271,12 @@ CREATE TABLE `productos` (
 
 INSERT INTO `productos` (`codigo_ean`, `id_proveedor`, `tipo_producto`, `SKU`, `precio`) VALUES
   (9786070775390, 1, 'Libro',   884102,  249.00),
-  (9786073832014, 1, 'Libro',   10001,   350.00),
+  (9786073832014, 1, 'Libro',   100001,  350.00),
   (9786073868723, 3, 'Libro',   1321371, 299.00),
   (9786078852895, 2, 'Libro',   750912,  260.00),
   (9788497776639, 1, 'Libro',   9777668, 199.00),
-  (9771234567010, 2, 'Revista', 20001,   120.00),
-  (9772007490001, 4, 'Revista', 901001,  65.00);
+  (9771234567010, 2, 'Revista', 200001,  120.00),
+  (9772007490009, 4, 'Revista', 901001,  65.00);
 
 CREATE TABLE `libros` (
   `codigo_ean`   BIGINT       NOT NULL,
@@ -295,7 +306,7 @@ CREATE TABLE `revistas` (
 
 INSERT INTO `revistas` (`codigo_ean`, `id_editorial`, `nombre_revista`, `numero_edicion`, `periodicidad`) VALUES
   (9771234567010, 1, 'National Geographic Mar 2026',       345, 'Mensual'),
-  (9772007490001, 2, 'Muy Interesante Mexico Ed. 452',     452, 'Mensual');
+  (9772007490009, 2, 'Muy Interesante Mexico Ed. 452',     452, 'Mensual');
 
 -- ---- Autores_has_Libros (N:M) ----------------------------------------------
 CREATE TABLE `autores_has_libros` (
@@ -337,7 +348,7 @@ INSERT INTO `productos_has_genero` (`codigo_ean`, `id_genero`) VALUES
   -- Revistas
   (9771234567010, 15), -- Historia
   (9771234567010, 18), -- Divulgacion Cientifica
-  (9772007490001, 18); -- Divulgacion Cientifica
+  (9772007490009, 18); -- Divulgacion Cientifica
 
 -- ============================================================================
 -- 4. EXISTENCIAS (inventario por mueble)  y MOVIMIENTOS
@@ -371,8 +382,8 @@ INSERT INTO `existencias` (`codigo_ean`, `id_mueble`, `cantidad`) VALUES
   (9771234567010, 11,  10),
   (9771234567010, 111, 35),
   -- Muy Interesante Mexico Ed. 452
-  (9772007490001, 11,  15),
-  (9772007490001, 111, 40);
+  (9772007490009, 11,  15),
+  (9772007490009, 111, 40);
 
 CREATE TABLE `movimientos` (
   `id_movimientos` BIGINT       NOT NULL AUTO_INCREMENT,
@@ -511,6 +522,50 @@ CREATE TABLE `detalle_ventas` (
   CONSTRAINT `FK_DV_PRODUCTO` FOREIGN KEY (`codigo_ean`) REFERENCES `productos` (`codigo_ean`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+-- ---- devolución de cliente con ticket (diagrama, paso 5) -------------------
+CREATE TABLE `apartados` (
+  `codigo_ean` BIGINT NOT NULL,
+  `cantidad`   INT    NOT NULL DEFAULT 0,
+  PRIMARY KEY (`codigo_ean`),
+  CONSTRAINT `FK_APARTADOS_PRODUCTO` FOREIGN KEY (`codigo_ean`) REFERENCES `productos` (`codigo_ean`),
+  CONSTRAINT `CK_APARTADOS_CANTIDAD` CHECK (`cantidad` >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `devolucion_cliente` (
+  `id_devolucion_cliente` BIGINT        NOT NULL AUTO_INCREMENT,
+  `id_ventas`             BIGINT        NOT NULL,              -- ticket original
+  `id_usuarios`           BIGINT        NOT NULL,              -- quien la registró
+  `fecha_hora`            DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `resolucion`            VARCHAR(10)   NOT NULL,              -- REEMBOLSO | CAMBIO
+  `total_devuelto`        DECIMAL(10,2) NOT NULL,              -- a precio pagado en el ticket
+  `id_venta_cambio`       BIGINT        DEFAULT NULL,          -- venta nueva si fue CAMBIO
+  `diferencia_cobrada`    DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  `observaciones`         VARCHAR(200)  DEFAULT NULL,
+  PRIMARY KEY (`id_devolucion_cliente`),
+  KEY `FK_DC_VENTA` (`id_ventas`),
+  KEY `FK_DC_USUARIO` (`id_usuarios`),
+  KEY `FK_DC_VENTA_CAMBIO` (`id_venta_cambio`),
+  CONSTRAINT `FK_DC_VENTA`        FOREIGN KEY (`id_ventas`)       REFERENCES `ventas` (`id_ventas`),
+  CONSTRAINT `FK_DC_USUARIO`      FOREIGN KEY (`id_usuarios`)     REFERENCES `usuarios` (`id_usuarios`),
+  CONSTRAINT `FK_DC_VENTA_CAMBIO` FOREIGN KEY (`id_venta_cambio`) REFERENCES `ventas` (`id_ventas`),
+  CONSTRAINT `CK_DC_RESOLUCION`   CHECK (`resolucion` IN ('REEMBOLSO', 'CAMBIO'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `detalle_devolucion_cliente` (
+  `id_detalle`            BIGINT        NOT NULL AUTO_INCREMENT,
+  `id_devolucion_cliente` BIGINT        NOT NULL,
+  `codigo_ean`            BIGINT        NOT NULL,
+  `cantidad`              INT           NOT NULL,
+  `precio_unitario`       DECIMAL(10,2) NOT NULL,               -- precio pagado en el ticket
+  `con_defecto`           BOOLEAN       NOT NULL DEFAULT 0,     -- 1 → apartados; 0 → piso
+  PRIMARY KEY (`id_detalle`),
+  KEY `FK_DDC_DEVOLUCION` (`id_devolucion_cliente`),
+  KEY `FK_DDC_PRODUCTO` (`codigo_ean`),
+  CONSTRAINT `FK_DDC_DEVOLUCION` FOREIGN KEY (`id_devolucion_cliente`) REFERENCES `devolucion_cliente` (`id_devolucion_cliente`) ON DELETE CASCADE,
+  CONSTRAINT `FK_DDC_PRODUCTO`   FOREIGN KEY (`codigo_ean`) REFERENCES `productos` (`codigo_ean`),
+  CONSTRAINT `CK_DDC_CANTIDAD`   CHECK (`cantidad` > 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 -- Ventas de ejemplo (seeds.sql): clientes con N libros y N revistas
 INSERT INTO `ventas` (`id_ventas`, `id_usuarios`, `fecha_hora`, `total`, `nombre_cliente`) VALUES
   (1, 628777129, DATE_SUB(NOW(), INTERVAL 1 DAY), 1060.00, 'Ing. Fernando Peña'),
@@ -523,7 +578,7 @@ INSERT INTO `detalle_ventas` (`id_detalle`, `id_ventas`, `codigo_ean`, `cantidad
   -- Venta #2: 1 libro (Un Himno a la Vida) + 1 NatGeo + 1 Muy Interesante
   (3, 2, 9786073868723, 1, 299.00, 299.00),
   (4, 2, 9771234567010, 1, 120.00, 120.00),
-  (5, 2, 9772007490001, 1,  65.00,  65.00);
+  (5, 2, 9772007490009, 1,  65.00,  65.00);
 
 -- ============================================================================
 -- 8. DEVOLUCIONES
@@ -537,6 +592,7 @@ CREATE TABLE `devolucion` (
   `total_piezas`       INT         NOT NULL,
   `estado`             VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
   `fecha_aprobacion`   DATETIME    DEFAULT NULL,
+  `observaciones`      VARCHAR(200) DEFAULT NULL, -- nota del Jefe al aprobar o rechazar
   PRIMARY KEY (`id_devolucion`),
   KEY `FK_DEVOLUCION_PROVEEDOR` (`id_proveedor`),
   KEY `FK_DEVOLUCION_USUARIO` (`id_usuarios`),
@@ -566,6 +622,131 @@ CREATE TABLE `detalle_devolucion` (
   CONSTRAINT `FK_DD_MOTIVO`     FOREIGN KEY (`id_motivo`)     REFERENCES `motivo` (`id_motivo`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 -- (sin datos: el backup y los seeds no traían detalle de las devoluciones 1 y 2)
+
+-- ============================================================================
+-- 8b. INVENTARIO MENSUAL Y SOLICITUDES DE EDITORIAL (diagrama, paso 7)
+-- ============================================================================
+CREATE TABLE `solicitud_editorial` (
+  `id_solicitud` BIGINT       NOT NULL AUTO_INCREMENT,
+  `id_proveedor` INT          NOT NULL,
+  `id_usuarios`  BIGINT       NOT NULL,                       -- quien la registró
+  `fecha`        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `referencia`   VARCHAR(150) NOT NULL,                       -- p. ej. asunto/fecha del correo
+  `estado`       VARCHAR(10)  NOT NULL DEFAULT 'ABIERTA',     -- ABIERTA | ATENDIDA
+  PRIMARY KEY (`id_solicitud`),
+  KEY `FK_SE_PROVEEDOR` (`id_proveedor`),
+  KEY `FK_SE_USUARIO` (`id_usuarios`),
+  CONSTRAINT `FK_SE_PROVEEDOR` FOREIGN KEY (`id_proveedor`) REFERENCES `proveedor` (`id_proveedor`),
+  CONSTRAINT `FK_SE_USUARIO`   FOREIGN KEY (`id_usuarios`)  REFERENCES `usuarios` (`id_usuarios`),
+  CONSTRAINT `CK_SE_ESTADO`    CHECK (`estado` IN ('ABIERTA', 'ATENDIDA'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `detalle_solicitud_editorial` (
+  `id_solicitud` BIGINT NOT NULL,
+  `codigo_ean`   BIGINT NOT NULL,
+  PRIMARY KEY (`id_solicitud`, `codigo_ean`),
+  KEY `FK_DSE_PRODUCTO` (`codigo_ean`),
+  CONSTRAINT `FK_DSE_SOLICITUD` FOREIGN KEY (`id_solicitud`) REFERENCES `solicitud_editorial` (`id_solicitud`) ON DELETE CASCADE,
+  CONSTRAINT `FK_DSE_PRODUCTO`  FOREIGN KEY (`codigo_ean`)   REFERENCES `productos` (`codigo_ean`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `inventario` (
+  `id_inventario`      BIGINT       NOT NULL AUTO_INCREMENT,
+  `id_usuarios`        BIGINT       NOT NULL,                 -- quien contó (Vendedor)
+  `fecha_inicio`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `fecha_cierre`       DATETIME     DEFAULT NULL,
+  `estado`             VARCHAR(10)  NOT NULL DEFAULT 'ABIERTO', -- ABIERTO | CERRADO | APROBADO | RECHAZADO
+  `dias_anejamiento`   INT          NOT NULL DEFAULT 90,       -- regla usada al cerrar
+  `id_usuario_revisa`  BIGINT       DEFAULT NULL,              -- Jefe que aprobó/rechazó
+  `fecha_revision`     DATETIME     DEFAULT NULL,
+  `observaciones`      VARCHAR(200) DEFAULT NULL,
+  PRIMARY KEY (`id_inventario`),
+  KEY `FK_INV_USUARIO` (`id_usuarios`),
+  KEY `FK_INV_REVISA` (`id_usuario_revisa`),
+  CONSTRAINT `FK_INV_USUARIO` FOREIGN KEY (`id_usuarios`)       REFERENCES `usuarios` (`id_usuarios`),
+  CONSTRAINT `FK_INV_REVISA`  FOREIGN KEY (`id_usuario_revisa`) REFERENCES `usuarios` (`id_usuarios`),
+  CONSTRAINT `CK_INV_ESTADO`  CHECK (`estado` IN ('ABIERTO', 'CERRADO', 'APROBADO', 'RECHAZADO'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `detalle_inventario` (
+  `id_inventario`     BIGINT      NOT NULL,
+  `codigo_ean`        BIGINT      NOT NULL,
+  `cantidad_contada`  INT         NOT NULL DEFAULT 0,
+  `stock_sistema`     INT         DEFAULT NULL,   -- piso al cerrar
+  `stock_apartado`    INT         NOT NULL DEFAULT 0,
+  `motivo_devolucion` VARCHAR(20) DEFAULT NULL,   -- ANEJAMIENTO | SOLICITUD_EDITORIAL
+  PRIMARY KEY (`id_inventario`, `codigo_ean`),
+  KEY `FK_DI_PRODUCTO` (`codigo_ean`),
+  CONSTRAINT `FK_DI_INVENTARIO` FOREIGN KEY (`id_inventario`) REFERENCES `inventario` (`id_inventario`) ON DELETE CASCADE,
+  CONSTRAINT `FK_DI_PRODUCTO`   FOREIGN KEY (`codigo_ean`)    REFERENCES `productos` (`codigo_ean`),
+  CONSTRAINT `CK_DI_CONTADA`    CHECK (`cantidad_contada` >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ============================================================================
+-- 8c. INCIDENCIAS DE COMPRA Y RECEPCIÓN DE REQUISICIONES (diagrama, pasos 1-3)
+-- ============================================================================
+CREATE TABLE `incidencia_compra` (
+  `id_incidencia`        BIGINT      NOT NULL AUTO_INCREMENT,
+  `id_compras_proveedor` BIGINT      NOT NULL,
+  `id_usuarios`          BIGINT      NOT NULL,                  -- quien recibió el paquete
+  `fecha`                DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `estado`               VARCHAR(10) NOT NULL DEFAULT 'ABIERTA', -- ABIERTA | CERRADA
+  `fecha_cierre`         DATETIME    DEFAULT NULL,
+  PRIMARY KEY (`id_incidencia`),
+  UNIQUE KEY `UQ_IC_COMPRA` (`id_compras_proveedor`),
+  KEY `FK_IC_USUARIO` (`id_usuarios`),
+  CONSTRAINT `FK_IC_COMPRA`  FOREIGN KEY (`id_compras_proveedor`) REFERENCES `compras_proveedor` (`id_compras_proveedor`) ON DELETE CASCADE,
+  CONSTRAINT `FK_IC_USUARIO` FOREIGN KEY (`id_usuarios`)          REFERENCES `usuarios` (`id_usuarios`),
+  CONSTRAINT `CK_IC_ESTADO`  CHECK (`estado` IN ('ABIERTA', 'CERRADA'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `detalle_incidencia_compra` (
+  `id_incidencia`      BIGINT        NOT NULL,
+  `codigo_ean`         BIGINT        NOT NULL,
+  `cantidad_facturada` INT           NOT NULL,
+  `cantidad_recibida`  INT           NOT NULL,             -- lo que llegó con la factura
+  `cantidad_repuesta`  INT           NOT NULL DEFAULT 0,   -- lo que llegó después
+  `costo_unitario`     DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  PRIMARY KEY (`id_incidencia`, `codigo_ean`),
+  KEY `FK_DIC_PRODUCTO` (`codigo_ean`),
+  CONSTRAINT `FK_DIC_INCIDENCIA` FOREIGN KEY (`id_incidencia`) REFERENCES `incidencia_compra` (`id_incidencia`) ON DELETE CASCADE,
+  CONSTRAINT `FK_DIC_PRODUCTO`   FOREIGN KEY (`codigo_ean`)    REFERENCES `productos` (`codigo_ean`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `requisicion` (
+  `folio`             VARCHAR(30)  NOT NULL,                  -- REQ-AAAA-n
+  `tipo`              VARCHAR(10)  NOT NULL,                  -- SALIDA | ENTRADA
+  `id_proveedor`      INT          DEFAULT NULL,              -- editorial del documento
+  `id_usuarios`       BIGINT       NOT NULL,                  -- quien la registró
+  `fecha`             DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `estado`            VARCHAR(10)  NOT NULL DEFAULT 'PENDIENTE', -- PENDIENTE | CONFIRMADA | CORREGIDA | REGISTRADA
+  `id_usuario_recibe` BIGINT       DEFAULT NULL,              -- Vendedor que la recibió
+  `fecha_recepcion`   DATETIME     DEFAULT NULL,
+  `observaciones`     VARCHAR(200) DEFAULT NULL,
+  PRIMARY KEY (`folio`),
+  KEY `FK_REQ_PROVEEDOR` (`id_proveedor`),
+  KEY `FK_REQ_USUARIO` (`id_usuarios`),
+  KEY `FK_REQ_RECIBE` (`id_usuario_recibe`),
+  CONSTRAINT `FK_REQ_PROVEEDOR` FOREIGN KEY (`id_proveedor`)      REFERENCES `proveedor` (`id_proveedor`),
+  CONSTRAINT `FK_REQ_USUARIO`   FOREIGN KEY (`id_usuarios`)       REFERENCES `usuarios` (`id_usuarios`),
+  CONSTRAINT `FK_REQ_RECIBE`    FOREIGN KEY (`id_usuario_recibe`) REFERENCES `usuarios` (`id_usuarios`),
+  CONSTRAINT `CK_REQ_TIPO`      CHECK (`tipo` IN ('SALIDA', 'ENTRADA')),
+  CONSTRAINT `CK_REQ_ESTADO`    CHECK (`estado` IN ('PENDIENTE', 'CONFIRMADA', 'CORREGIDA', 'REGISTRADA'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `detalle_requisicion` (
+  `folio`             VARCHAR(30) NOT NULL,
+  `codigo_ean`        BIGINT      NOT NULL,
+  `cantidad`          INT         NOT NULL,      -- lo que dice el documento original
+  `cantidad_recibida` INT         DEFAULT NULL,  -- lo que confirmó el Vendedor
+  `id_mueble`         INT         NOT NULL,      -- mueble destino (en piso, para la salida)
+  PRIMARY KEY (`folio`, `codigo_ean`),
+  KEY `FK_DR_PRODUCTO` (`codigo_ean`),
+  KEY `FK_DR_MUEBLE` (`id_mueble`),
+  CONSTRAINT `FK_DR_REQUISICION` FOREIGN KEY (`folio`)      REFERENCES `requisicion` (`folio`) ON DELETE CASCADE,
+  CONSTRAINT `FK_DR_PRODUCTO`    FOREIGN KEY (`codigo_ean`) REFERENCES `productos` (`codigo_ean`),
+  CONSTRAINT `FK_DR_MUEBLE`      FOREIGN KEY (`id_mueble`)  REFERENCES `mueble` (`id_mueble`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ============================================================================
 -- 9. VISTA: productos comprados por cliente (libros y revistas)

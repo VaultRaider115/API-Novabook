@@ -1,11 +1,37 @@
 use crate::{
-    db::{DbPool, log_bitacora},
+    db::{DbPool, existe_duplicado, log_bitacora},
     error::AppError,
     productos::{
         model::{ActualizarAutorRequest, Autor, CrearAutorRequest},
         repo::AutorRepo,
     },
 };
+
+fn validate_author_text(value: &str, field: &str) -> Result<(), AppError> {
+    if value.trim().is_empty() {
+        return Err(AppError::BadRequest(format!("{field} es obligatorio")));
+    }
+    if value.chars().any(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(format!(
+            "{field} no puede contener números"
+        )));
+    }
+    Ok(())
+}
+
+/// Un solo registro por autor: no se repite la combinación nombre + apellidos.
+async fn validar_unico(
+    pool: &DbPool,
+    nombre: &str,
+    apellidos: &str,
+    excluir_id: Option<i32>,
+) -> Result<(), AppError> {
+    let columnas = [("nombre", nombre), ("apellidos", apellidos)];
+    if existe_duplicado(pool, "autores", "id_autores", &columnas, excluir_id.map(i64::from)).await? {
+        return Err(AppError::Conflict(format!("Ya existe el autor {} {}", nombre, apellidos)));
+    }
+    Ok(())
+}
 
 pub struct AutorService;
 
@@ -25,11 +51,13 @@ impl AutorService {
         actor_id: i64,
         req: CrearAutorRequest,
     ) -> Result<Autor, AppError> {
-        if req.nombre.trim().is_empty() || req.apellidos.trim().is_empty() {
-            return Err(AppError::BadRequest(
-                "Nombre y apellidos del autor son obligatorios".to_string(),
-            ));
-        }
+        validate_author_text(&req.nombre, "El nombre del autor")?;
+        validate_author_text(&req.apellidos, "Los apellidos del autor")?;
+
+        let mut req = req;
+        req.nombre = req.nombre.trim().to_string();
+        req.apellidos = req.apellidos.trim().to_string();
+        validar_unico(pool, &req.nombre, &req.apellidos, None).await?;
 
         let autor = AutorRepo::crear_autor(pool, &req).await?;
 
@@ -54,11 +82,13 @@ impl AutorService {
         id: i32,
         req: ActualizarAutorRequest,
     ) -> Result<Autor, AppError> {
-        if req.nombre.trim().is_empty() || req.apellidos.trim().is_empty() {
-            return Err(AppError::BadRequest(
-                "Nombre y apellidos del autor son obligatorios".to_string(),
-            ));
-        }
+        validate_author_text(&req.nombre, "El nombre del autor")?;
+        validate_author_text(&req.apellidos, "Los apellidos del autor")?;
+
+        let mut req = req;
+        req.nombre = req.nombre.trim().to_string();
+        req.apellidos = req.apellidos.trim().to_string();
+        validar_unico(pool, &req.nombre, &req.apellidos, Some(id)).await?;
 
         let autor = AutorRepo::actualizar_autor(pool, id, &req).await?;
 
@@ -78,13 +108,21 @@ impl AutorService {
     }
 
     pub async fn eliminar_autor(pool: &DbPool, actor_id: i64, id: i32) -> Result<(), AppError> {
+        let autor = Self::obtener_autor(pool, id).await?;
+        if autor.total_libros > 0 {
+            return Err(AppError::BadRequest(format!(
+                "No puedes eliminar al autor porque tiene {} título(s) asociado(s)",
+                autor.total_libros
+            )));
+        }
+
         AutorRepo::eliminar_autor(pool, id).await?;
 
         let _ = log_bitacora(
             pool,
             actor_id,
             "ELIMINAR AUTOR",
-            &format!("Autor eliminado con ID: {}", id),
+            &format!("Autor eliminado (ID: {})", id),
         )
         .await;
 

@@ -4,13 +4,59 @@ use crate::{
     productos::{
         model::{
             Libro, RegistrarLibroRequest, RegistrarRevistaRequest, Revista, TipoProducto,
-            validar_patron_ean13,
+            validar_patron_ean13, validar_sku,
         },
         repo::{ProductoRepo, UBICACION_BODEGA},
     },
 };
 
 pub struct ProductoService;
+
+/// Diagrama, paso 1: el alta es solo para productos nuevos. Si el EAN ya
+/// existe, las piezas entran por Compras a Proveedor (no se sobrescribe el
+/// título, precio ni SKU del producto registrado).
+async fn validar_ean_nuevo(pool: &DbPool, ean: i64) -> Result<(), AppError> {
+    let fila = sqlx::query(
+        "SELECT COALESCE(l.nombre_libro, r.nombre_revista, '') AS titulo FROM productos p          LEFT JOIN libros l ON l.codigo_ean = p.codigo_ean          LEFT JOIN revistas r ON r.codigo_ean = p.codigo_ean WHERE p.codigo_ean = ?",
+    )
+    .bind(ean)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?;
+    if let Some(f) = fila {
+        let titulo: String = sqlx::Row::get(&f, "titulo");
+        return Err(AppError::Conflict(format!(
+            "El EAN {} ya está registrado como \"{}\"; para agregar piezas usa Compras a Proveedor",
+            ean, titulo
+        )));
+    }
+    Ok(())
+}
+
+/// SKU de 6 a 7 dígitos, obligatorio en el alta y sin repetirse entre productos.
+async fn validar_sku_producto(pool: &DbPool, ean: i64, sku: Option<i64>) -> Result<(), AppError> {
+    let Some(sku) = sku else {
+        return Err(AppError::BadRequest(
+            "El SKU es obligatorio para dar de alta un producto nuevo".to_string(),
+        ));
+    };
+    validar_sku(sku).map_err(AppError::BadRequest)?;
+
+    let otro = sqlx::query("SELECT codigo_ean FROM productos WHERE SKU = ? AND codigo_ean <> ? LIMIT 1")
+        .bind(sku)
+        .bind(ean)
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)?;
+    if let Some(row) = otro {
+        let ean_otro: i64 = sqlx::Row::get(&row, "codigo_ean");
+        return Err(AppError::Conflict(format!(
+            "El SKU {} ya está asignado al producto con EAN {}",
+            sku, ean_otro
+        )));
+    }
+    Ok(())
+}
 
 impl ProductoService {
     // ========================================================================
@@ -40,15 +86,17 @@ impl ProductoService {
                 req.codigo_ean
             )));
         }
+        validar_ean_nuevo(pool, req.codigo_ean).await?;
+        validar_sku_producto(pool, req.codigo_ean, req.sku).await?;
 
-        if req.cantidad <= 0 {
+        if req.cantidad < 0 {
             return Err(AppError::BadRequest(
-                "La cantidad debe ser mayor a 0".to_string(),
+                "La cantidad no puede ser negativa".to_string(),
             ));
         }
-        if req.precio < 0.0 {
+        if req.precio <= 0.0 || !req.precio.is_finite() {
             return Err(AppError::BadRequest(
-                "El precio no puede ser negativo".to_string(),
+                "El precio de venta debe ser mayor a $0".to_string(),
             ));
         }
 
@@ -60,8 +108,8 @@ impl ProductoService {
             actor_id,
             "REGISTRO LIBRO BODEGA",
             &format!(
-                "EAN: {}, Título: '{}', Cant: {}",
-                req.codigo_ean, req.nombre_libro, req.cantidad
+                "Alta de libro '{}' con EAN {} ({} pza(s) en bodega)",
+                req.nombre_libro, req.codigo_ean, req.cantidad
             ),
         )
         .await;
@@ -92,15 +140,17 @@ impl ProductoService {
                 req.codigo_ean
             )));
         }
+        validar_ean_nuevo(pool, req.codigo_ean).await?;
+        validar_sku_producto(pool, req.codigo_ean, req.sku).await?;
 
-        if req.cantidad <= 0 {
+        if req.cantidad < 0 {
             return Err(AppError::BadRequest(
-                "La cantidad debe ser mayor a 0".to_string(),
+                "La cantidad no puede ser negativa".to_string(),
             ));
         }
-        if req.precio < 0.0 {
+        if req.precio <= 0.0 || !req.precio.is_finite() {
             return Err(AppError::BadRequest(
-                "El precio no puede ser negativo".to_string(),
+                "El precio de venta debe ser mayor a $0".to_string(),
             ));
         }
 
@@ -112,8 +162,11 @@ impl ProductoService {
             actor_id,
             "REGISTRO REVISTA BODEGA",
             &format!(
-                "EAN: {}, Título: '{}', Edición: {:?}, Cant: {}",
-                req.codigo_ean, req.nombre_revista, req.numero_edicion, req.cantidad
+                "Alta de revista '{}'{} con EAN {} ({} pza(s) en bodega)",
+                req.nombre_revista,
+                req.numero_edicion.map(|n| format!(" Ed. {}", n)).unwrap_or_default(),
+                req.codigo_ean,
+                req.cantidad
             ),
         )
         .await;

@@ -1,11 +1,11 @@
 use sqlx::Row;
 
 use crate::{
-    db::{DbPool, row_get_f64, row_get_i32},
+    db::{DbPool, row_get_f64},
     error::AppError,
     productos::{
         model::{ItemVenta, RegistrarVentaRequest, TipoProducto, VentaResponse},
-        repo::UBICACION_TIENDA,
+        repo::{UBICACION_TIENDA, stock::{self, Tx}},
     },
 };
 
@@ -18,42 +18,33 @@ impl VentaRepo {
         req: &RegistrarVentaRequest,
     ) -> Result<VentaResponse, AppError> {
         let mut tx = pool.begin().await.map_err(AppError::Database)?;
+        let venta = Self::registrar_en_tx(&mut tx, actor_id, req).await?;
+        tx.commit().await.map_err(AppError::Database)?;
+        Ok(venta)
+    }
 
+    /// Registra la venta dentro de una transacción ya abierta (la usa también el
+    /// cambio de una devolución de cliente, que debe ser todo o nada).
+    pub async fn registrar_en_tx(
+        tx: &mut Tx<'_>,
+        actor_id: i64,
+        req: &RegistrarVentaRequest,
+    ) -> Result<VentaResponse, AppError> {
         let nombre_cli = if req.cliente.trim().is_empty() {
             "Público en General"
         } else {
             req.cliente.trim()
         };
-
-        // Asociar con la entidad `clientes` (o auto-registrar cliente si es nuevo)
-        let id_cliente: i32 = if nombre_cli == "Público en General" {
-            1
-        } else {
-            let row_cli = sqlx::query("SELECT id_cliente FROM clientes WHERE LOWER(TRIM(nombre)) = LOWER(?)")
-                .bind(nombre_cli)
-                .fetch_optional(&mut *tx)
-                .await
-                .map_err(AppError::Database)?;
-
-            if let Some(r) = row_cli {
-                r.get("id_cliente")
-            } else {
-                let res_cli = sqlx::query("INSERT INTO clientes (nombre) VALUES (?)")
-                    .bind(nombre_cli)
-                    .execute(&mut *tx)
-                    .await
-                    .map_err(AppError::Database)?;
-                res_cli.last_insert_id() as i32
-            }
-        };
+        let metodo_pago = req.metodo_pago.trim().to_uppercase();
 
         let insert_res = sqlx::query(
-            "INSERT INTO ventas (id_usuarios, id_cliente, nombre_cliente, fecha_hora, total) VALUES (?, ?, ?, NOW(), 0.0)"
+            "INSERT INTO ventas (id_usuarios, total, nombre_cliente, factura, metodo_pago) VALUES (?, 0.0, ?, ?, ?)",
         )
         .bind(actor_id)
-        .bind(id_cliente)
         .bind(nombre_cli)
-        .execute(&mut *tx)
+        .bind(&req.factura)
+        .bind(&metodo_pago)
+        .execute(&mut **tx)
         .await
         .map_err(AppError::Database)?;
 
@@ -64,105 +55,55 @@ impl VentaRepo {
 
         for item in &req.items {
             if item.cantidad <= 0 {
-                return Err(AppError::BadRequest(
-                    "La cantidad vendida debe ser mayor a 0".to_string(),
-                ));
+                return Err(AppError::BadRequest("La cantidad vendida debe ser mayor a 0".to_string()));
             }
 
-            let (nombre, precio) = match item.tipo_producto {
-                TipoProducto::Libro => {
-                    let row = sqlx::query(
-                        "SELECT nombre_libro, precio, cantidad FROM libros WHERE codigo_ean = ? AND id_ubicacion = ? FOR UPDATE"
-                    )
-                    .bind(item.codigo_ean)
-                    .bind(UBICACION_TIENDA)
-                    .fetch_optional(&mut *tx)
-                    .await
-                    .map_err(AppError::Database)?
-                    .ok_or_else(|| {
-                        AppError::NotFound(format!("El libro con EAN {} no existe en Piso de Ventas", item.codigo_ean))
-                    })?;
+            let row = sqlx::query(
+                "SELECT p.precio, p.tipo_producto, COALESCE(l.nombre_libro, r.nombre_revista) AS nombre \
+                 FROM productos p \
+                 LEFT JOIN libros l ON l.codigo_ean = p.codigo_ean \
+                 LEFT JOIN revistas r ON r.codigo_ean = p.codigo_ean \
+                 WHERE p.codigo_ean = ?",
+            )
+            .bind(item.codigo_ean)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(AppError::Database)?
+            .ok_or_else(|| AppError::NotFound(format!("El producto con EAN {} no existe", item.codigo_ean)))?;
 
-                    let nombre: String = row.get("nombre_libro");
-                    let precio: f64 = row.get("precio");
-                    let stock_actual: i32 = row.get("cantidad");
+            let nombre: String = row.try_get("nombre").unwrap_or_else(|_| format!("EAN {}", item.codigo_ean));
+            let precio = row_get_f64(&row, "precio");
+            let tipo_str: String = row.get("tipo_producto");
+            let tipo = if tipo_str.eq_ignore_ascii_case("revista") { TipoProducto::Revista } else { TipoProducto::Libro };
 
-                    if stock_actual < item.cantidad {
-                        return Err(AppError::BadRequest(format!(
-                            "Stock insuficiente en tienda para '{}'. Disponible: {}, Solicitado: {}",
-                            nombre, stock_actual, item.cantidad
-                        )));
-                    }
-
-                    sqlx::query("UPDATE libros SET cantidad = cantidad - ? WHERE codigo_ean = ? AND id_ubicacion = ?")
-                        .bind(item.cantidad)
-                        .bind(item.codigo_ean)
-                        .bind(UBICACION_TIENDA)
-                        .execute(&mut *tx)
-                        .await
-                        .map_err(AppError::Database)?;
-
-                    (nombre, precio)
-                }
-                TipoProducto::Revista => {
-                    let row = sqlx::query(
-                        "SELECT nombre_revista, precio, cantidad FROM revistas WHERE codigo_ean = ? AND id_ubicacion = ? FOR UPDATE"
-                    )
-                    .bind(item.codigo_ean)
-                    .bind(UBICACION_TIENDA)
-                    .fetch_optional(&mut *tx)
-                    .await
-                    .map_err(AppError::Database)?
-                    .ok_or_else(|| {
-                        AppError::NotFound(format!("La revista con EAN {} no existe en Piso de Ventas", item.codigo_ean))
-                    })?;
-
-                    let nombre: String = row.get("nombre_revista");
-                    let precio: f64 = row_get_f64(&row, "precio");
-                    let stock_actual: i32 = row_get_i32(&row, "cantidad");
-
-                    if stock_actual < item.cantidad {
-                        return Err(AppError::BadRequest(format!(
-                            "Stock insuficiente en tienda para revista '{}'. Disponible: {}, Solicitado: {}",
-                            nombre, stock_actual, item.cantidad
-                        )));
-                    }
-
-                    sqlx::query("UPDATE revistas SET cantidad = cantidad - ? WHERE codigo_ean = ? AND id_ubicacion = ?")
-                        .bind(item.cantidad)
-                        .bind(item.codigo_ean)
-                        .bind(UBICACION_TIENDA)
-                        .execute(&mut *tx)
-                        .await
-                        .map_err(AppError::Database)?;
-
-                    (nombre, precio)
-                }
-            };
+            let disponible = stock::stock_bloqueado(tx, item.codigo_ean, UBICACION_TIENDA).await?;
+            if disponible < item.cantidad {
+                return Err(AppError::BadRequest(format!(
+                    "Stock insuficiente en tienda para '{}'. Disponible: {}, Solicitado: {}",
+                    nombre, disponible, item.cantidad
+                )));
+            }
+            stock::descontar(tx, item.codigo_ean, UBICACION_TIENDA, item.cantidad).await?;
 
             let subtotal = precio * (item.cantidad as f64);
             total_venta += subtotal;
             total_articulos += item.cantidad;
 
             sqlx::query(
-                r#"
-                INSERT INTO detalle_ventas (id_venta, codigo_ean, tipo_producto, cantidad, precio_unitario, subtotal)
-                VALUES (?, ?, ?, ?, ?, ?)
-                "#,
+                "INSERT INTO detalle_ventas (id_ventas, codigo_ean, cantidad, precio_unitario, subtotal) VALUES (?, ?, ?, ?, ?)",
             )
             .bind(id_venta)
             .bind(item.codigo_ean)
-            .bind(item.tipo_producto.as_str())
             .bind(item.cantidad)
             .bind(precio)
             .bind(subtotal)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await
             .map_err(AppError::Database)?;
 
             items_procesados.push(ItemVenta {
                 codigo_ean: item.codigo_ean,
-                tipo_producto: item.tipo_producto,
+                tipo_producto: tipo,
                 nombre_producto: nombre,
                 cantidad: item.cantidad,
                 precio_unitario: precio,
@@ -170,20 +111,27 @@ impl VentaRepo {
             });
         }
 
-        sqlx::query("UPDATE ventas SET total = ? WHERE id_venta = ?")
+        sqlx::query("UPDATE ventas SET total = ? WHERE id_ventas = ?")
             .bind(total_venta)
             .bind(id_venta)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await
             .map_err(AppError::Database)?;
 
-        tx.commit().await.map_err(AppError::Database)?;
+        let fecha: String = sqlx::query("SELECT DATE_FORMAT(fecha_hora, '%Y-%m-%d %H:%i:%s') AS f FROM ventas WHERE id_ventas = ?")
+            .bind(id_venta)
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(AppError::Database)?
+            .get("f");
 
         Ok(VentaResponse {
             id_venta,
             id_vendedor: actor_id,
             cliente: nombre_cli.to_string(),
-            fecha_hora: "Hoy".to_string(),
+            metodo_pago,
+            factura: req.factura.clone(),
+            fecha_hora: fecha,
             total: total_venta,
             total_articulos,
             items: items_procesados,

@@ -34,7 +34,7 @@ pub async fn crear_usuario_handler(
     Extension(claims): Extension<Claims>,
     Json(payload): Json<CrearUsuarioRequest>,
 ) -> Result<Json<ApiResponse<UsuarioDto>>, AppError> {
-    let res = UsuarioService::crear_usuario(&state.pool, claims.id_usuario, payload).await?;
+    let res = UsuarioService::crear_usuario(&state.pool, claims.id_usuario, claims.rol, payload).await?;
     Ok(Json(ApiResponse::success_msg(
         res,
         "Usuario creado exitosamente",
@@ -48,7 +48,8 @@ pub async fn actualizar_usuario_handler(
     Json(payload): Json<ActualizarUsuarioRequest>,
 ) -> Result<Json<ApiResponse<UsuarioDto>>, AppError> {
     let res =
-        UsuarioService::actualizar_usuario(&state.pool, claims.id_usuario, id, payload).await?;
+        UsuarioService::actualizar_usuario(&state.pool, claims.id_usuario, claims.rol, id, payload)
+            .await?;
     Ok(Json(ApiResponse::success_msg(
         res,
         "Usuario actualizado exitosamente",
@@ -60,7 +61,7 @@ pub async fn eliminar_usuario_handler(
     Extension(claims): Extension<Claims>,
     Path(id): Path<i64>,
 ) -> Result<Json<MessageResponse>, AppError> {
-    UsuarioService::eliminar_usuario(&state.pool, claims.id_usuario, id).await?;
+    UsuarioService::eliminar_usuario(&state.pool, claims.id_usuario, claims.rol, id).await?;
     Ok(Json(MessageResponse::new(format!(
         "Usuario con ID {} eliminado exitosamente",
         id

@@ -8,7 +8,7 @@ use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode}
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
-    config::Config,
+    db::AppState,
     error::AppError,
     usuarios::model::{Claims, RolEnum},
 };
@@ -58,7 +58,7 @@ pub fn verify_jwt(token: &str, secret: &str) -> Result<Claims, AppError> {
 
 /// Middleware que extrae el token Bearer, valida el JWT e inyecta Claims en Request Extensions
 pub async fn auth_middleware(
-    State(config): State<Config>,
+    State(state): State<AppState>,
     mut req: Request,
     next: Next,
 ) -> Result<Response, AppError> {
@@ -78,7 +78,21 @@ pub async fn auth_middleware(
         ));
     };
 
-    let claims = verify_jwt(token, &config.jwt_secret)?;
+    let claims = verify_jwt(token, &state.config.jwt_secret)?;
+
+    // Un usuario dado de baja pierde el acceso de inmediato, aunque su token no haya expirado.
+    let activo = sqlx::query("SELECT estado FROM usuarios WHERE id_usuarios = ?")
+        .bind(claims.id_usuario)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(AppError::Database)?
+        .map(|r| sqlx::Row::get::<bool, _>(&r, "estado"));
+    if activo != Some(true) {
+        return Err(AppError::Unauthorized(
+            "Usuario inactivo o inexistente. Inicia sesión nuevamente".to_string(),
+        ));
+    }
+
     req.extensions_mut().insert(claims);
 
     Ok(next.run(req).await)
@@ -108,22 +122,23 @@ pub async fn require_gerente_o_jefe(req: Request, next: Next) -> Result<Response
     Ok(next.run(req).await)
 }
 
-/// Middleware de autorización: Permite a Bodega, Jefe y Gerente
-pub async fn require_bodega_o_gerente(req: Request, next: Next) -> Result<Response, AppError> {
-    validate_role(
-        &req,
-        &[
-            RolEnum::PersonalBodega,
-            RolEnum::Gerente,
-            RolEnum::JefeDepartamento,
-        ],
-    )?;
+/// Middleware de autorización: Jefe de Departamento o Personal de Bodega.
+/// Se usa solo para dar de alta proveedores/editoriales nuevos durante la
+/// compra (diagrama de procesos, paso 1); editar y borrar es solo del Jefe.
+pub async fn require_jefe_o_bodega(req: Request, next: Next) -> Result<Response, AppError> {
+    validate_role(&req, &[RolEnum::JefeDepartamento, RolEnum::PersonalBodega])?;
     Ok(next.run(req).await)
 }
 
 /// Middleware de autorización: Exclusivo para Jefe de Departamento
 pub async fn require_jefe(req: Request, next: Next) -> Result<Response, AppError> {
     validate_role(&req, &[RolEnum::JefeDepartamento])?;
+    Ok(next.run(req).await)
+}
+
+/// Middleware de autorización: Exclusivo para Gerente
+pub async fn require_gerente(req: Request, next: Next) -> Result<Response, AppError> {
+    validate_role(&req, &[RolEnum::Gerente])?;
     Ok(next.run(req).await)
 }
 

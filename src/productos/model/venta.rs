@@ -37,7 +37,16 @@ fn default_tipo_libro() -> TipoProducto {
 pub struct RegistrarVentaRequest {
     #[serde(default = "default_cliente")]
     pub cliente: String,
+    /// EFECTIVO | TARJETA | TRANSFERENCIA (ventas.metodo_pago)
+    #[serde(default = "default_metodo_pago")]
+    pub metodo_pago: String,
+    #[serde(default)]
+    pub factura: Option<String>,
     pub items: Vec<ItemVentaRequest>,
+}
+
+fn default_metodo_pago() -> String {
+    "EFECTIVO".to_string()
 }
 
 fn default_cliente() -> String {
@@ -49,6 +58,8 @@ pub struct VentaResponse {
     pub id_venta: i64,
     pub id_vendedor: i64,
     pub cliente: String,
+    pub metodo_pago: String,
+    pub factura: Option<String>,
     pub fecha_hora: String,
     pub total: f64,
     pub total_articulos: i32,

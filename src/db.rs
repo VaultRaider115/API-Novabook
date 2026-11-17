@@ -1,5 +1,6 @@
 use crate::{config::Config, error::AppError};
-use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
+use sqlx::mysql::{MySqlConnectOptions, MySqlPool, MySqlPoolOptions};
+use std::str::FromStr;
 use std::time::Duration;
 
 pub type DbPool = MySqlPool;
@@ -11,14 +12,72 @@ pub struct AppState {
 }
 
 pub async fn create_pool(database_url: &str) -> Result<DbPool, AppError> {
+    // sqlx fija por omisión la zona de la sesión en UTC (+00:00): NOW() y
+    // CURRENT_TIMESTAMP guardaban la hora UTC (6 h adelante en Saltillo) y,
+    // después de las 18:00, los eventos quedaban con la fecha del día
+    // siguiente (el Historial de Movimientos de "hoy" salía vacío). Se usa la
+    // zona del servidor de BD, o la de DB_TIME_ZONE si se define (ej. -06:00).
+    let zona = std::env::var("DB_TIME_ZONE").ok().filter(|z| !z.trim().is_empty());
+    let opciones = MySqlConnectOptions::from_str(database_url)
+        .map_err(AppError::Database)?
+        .timezone(zona);
     MySqlPoolOptions::new()
         .max_connections(10)
         .min_connections(2)
         .acquire_timeout(Duration::from_secs(5))
         .idle_timeout(Duration::from_secs(30))
-        .connect(database_url)
+        .connect_with(opciones)
         .await
         .map_err(AppError::Database)
+}
+
+/// Oculta la contraseña de una URL de conexión para poder registrarla en logs:
+/// "mysql://user:secreto@host:3306/Libreria" → "mysql://user:****@host:3306/Libreria".
+pub fn url_sin_contrasena(url: &str) -> String {
+    let Some(inicio) = url.find("://").map(|i| i + 3) else {
+        return url.to_string();
+    };
+    // Las credenciales terminan en la última '@' antes de la ruta.
+    let fin_autoridad = url[inicio..].find('/').map_or(url.len(), |i| inicio + i);
+    let Some(arroba) = url[inicio..fin_autoridad].rfind('@').map(|i| inicio + i) else {
+        return url.to_string();
+    };
+    match url[inicio..arroba].find(':') {
+        Some(dos_puntos) => format!("{}****{}", &url[..inicio + dos_puntos + 1], &url[arroba..]),
+        None => url.to_string(),
+    }
+}
+
+/// Revisa al arrancar que la base tenga las columnas que la API espera y, si
+/// falta alguna, indica qué script aplicar (no detiene el servidor).
+pub async fn verificar_esquema(pool: &DbPool) {
+    let pendientes = [
+        (
+            "SELECT observaciones FROM devolucion LIMIT 0",
+            "la columna devolucion.observaciones",
+            "migracion_observaciones_devolucion.sql",
+        ),
+        (
+            "SELECT 1 FROM devolucion_cliente LIMIT 0",
+            "la tabla devolucion_cliente",
+            "migracion_devolucion_cliente.sql",
+        ),
+        (
+            "SELECT 1 FROM inventario LIMIT 0",
+            "la tabla inventario",
+            "migracion_inventario_mensual.sql",
+        ),
+        (
+            "SELECT 1 FROM requisicion, incidencia_compra LIMIT 0",
+            "las tablas requisicion e incidencia_compra",
+            "migracion_recepcion_incidencias.sql",
+        ),
+    ];
+    for (consulta, que, script) in pendientes {
+        if let Err(e) = sqlx::query(consulta).execute(pool).await {
+            eprintln!("[ESQUEMA] Falta {que}: aplica {script} a la base de datos. ({e})");
+        }
+    }
 }
 
 /// Registra una acción en la tabla Bitacora para auditoría
@@ -38,12 +97,14 @@ pub async fn log_bitacora_tipo(
     accion: &str,
     detalle: &str,
 ) -> Result<(), AppError> {
+    // Recorte al tamaño de las columnas (accion VARCHAR(100), detalle VARCHAR(255)):
+    // si no, MariaDB rechaza el INSERT y el evento se pierde sin aviso.
     sqlx::query(
         "INSERT INTO bitacora (accion, detalle, id_usuarios, id_tipo_evento) \
          VALUES (?, ?, ?, ?)",
     )
-    .bind(accion)
-    .bind(detalle)
+    .bind(recortar(accion, 100))
+    .bind(recortar(detalle, 255))
     .bind(id_usuarios)
     .bind(id_tipo_evento)
     .execute(pool)
@@ -51,6 +112,41 @@ pub async fn log_bitacora_tipo(
     .map_err(AppError::Database)?;
 
     Ok(())
+}
+
+/// Recorta a `max` caracteres (no bytes), terminando en "…" si hubo recorte.
+pub fn recortar(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut r: String = s.chars().take(max.saturating_sub(1)).collect();
+    r.push('…');
+    r
+}
+
+/// Indica si ya existe un registro cuyas columnas coinciden con los valores dados,
+/// sin distinguir mayúsculas ni espacios al inicio/fin (catálogos sin repetidos).
+/// `tabla`, `id_col` y las columnas son nombres fijos del código, nunca datos del
+/// usuario; los valores siempre van como parámetros enlazados.
+pub async fn existe_duplicado(
+    pool: &DbPool,
+    tabla: &'static str,
+    id_col: &'static str,
+    columnas: &[(&'static str, &str)],
+    excluir_id: Option<i64>,
+) -> Result<bool, AppError> {
+    let mut qb = sqlx::QueryBuilder::<sqlx::MySql>::new(format!("SELECT 1 FROM {tabla} WHERE 1=1"));
+    for (col, valor) in columnas {
+        qb.push(format!(" AND LOWER(TRIM({col})) = LOWER(TRIM("))
+            .push_bind(valor.to_string())
+            .push("))");
+    }
+    if let Some(id) = excluir_id {
+        qb.push(format!(" AND {id_col} <> ")).push_bind(id);
+    }
+    qb.push(" LIMIT 1");
+    let fila = qb.build().fetch_optional(pool).await.map_err(AppError::Database)?;
+    Ok(fila.is_some())
 }
 
 use rust_decimal::Decimal;
@@ -130,5 +226,35 @@ pub fn row_get_f64(row: &sqlx::mysql::MySqlRow, col: &str) -> f64 {
         v as f64
     } else {
         0.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{recortar, url_sin_contrasena};
+
+    #[test]
+    fn oculta_la_contrasena_de_la_url() {
+        assert_eq!(
+            url_sin_contrasena("mysql://root:s3cr3t@localhost:3306/Libreria"),
+            "mysql://root:****@localhost:3306/Libreria"
+        );
+        // Contraseña con '@' y ':' dentro
+        assert_eq!(
+            url_sin_contrasena("mysql://app:p@ss:w@db:3306/Libreria"),
+            "mysql://app:****@db:3306/Libreria"
+        );
+        // Sin contraseña o sin credenciales: se deja igual
+        assert_eq!(url_sin_contrasena("mysql://app@db/Libreria"), "mysql://app@db/Libreria");
+        assert_eq!(url_sin_contrasena("mysql://db:3306/Libreria"), "mysql://db:3306/Libreria");
+    }
+
+    #[test]
+    fn recorta_por_caracteres_sin_romper_acentos() {
+        assert_eq!(recortar("Devolución", 20), "Devolución");
+        let largo = "ñ".repeat(300);
+        let r = recortar(&largo, 255);
+        assert_eq!(r.chars().count(), 255);
+        assert!(r.ends_with('…'));
     }
 }

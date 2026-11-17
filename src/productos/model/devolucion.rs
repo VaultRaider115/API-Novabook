@@ -7,6 +7,16 @@ pub struct ItemDevolucion {
     pub id_motivo: i32,
     pub sku: Option<i64>,
     pub titulo: String,
+    /// Segunda línea del acta (diseño 21): autores del libro o
+    /// "Edición mensual · No. 452" de la revista.
+    #[serde(default)]
+    pub descripcion: Option<String>,
+    /// Costo unitario de la última compra del EAN (None si nunca se compró).
+    #[serde(default)]
+    pub costo_unitario: Option<f64>,
+    /// Precio de venta actual (productos.precio).
+    #[serde(default)]
+    pub precio_venta: Option<f64>,
     pub cantidad: i32,
     pub motivo: Option<String>,
 }
@@ -14,6 +24,9 @@ pub struct ItemDevolucion {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Devolucion {
     pub id_devolucion: i64,
+    /// Folio visible, p. ej. "DEV-2026-7"
+    pub folio: String,
+    pub solicitante_rol: Option<String>,
     pub fecha: String,
     pub total_piezas: i32,
     pub estado: String,
@@ -29,6 +42,9 @@ pub struct Devolucion {
     pub proveedor_contacto: Option<String>,
     pub tipo_producto: TipoProducto,
     pub items: Vec<ItemDevolucion>,
+    /// Nota del Jefe al aprobar o rechazar (columna devolucion.observaciones).
+    #[serde(default)]
+    pub observaciones: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -66,4 +82,7 @@ pub struct HistorialDevolucionQuery {
     pub fecha: Option<String>,
     pub estado: Option<String>,
     pub id_proveedor: Option<i32>,
+    /// Solo lo fija el servidor (lista "Mis devoluciones"); nunca viene de la URL.
+    #[serde(skip)]
+    pub id_usuarios: Option<i64>,
 }

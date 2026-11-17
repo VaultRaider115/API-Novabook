@@ -7,6 +7,7 @@ pub struct Motivo {
     #[serde(rename = "motivo")]
     pub nombre_motivo: String,
     pub descripcion: Option<String>,
+    pub total_devoluciones: i64,
 }
 
 // Sirve para POST y PUT (mismos campos).
