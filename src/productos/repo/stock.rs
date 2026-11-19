@@ -8,7 +8,7 @@ use crate::{
 pub type Tx<'a> = sqlx::Transaction<'a, sqlx::MySql>;
 
 pub fn nombre_ubicacion(id_ubicacion: i32) -> &'static str {
-    if id_ubicacion == super::UBICACION_BODEGA { "Bodega" } else { "Piso de Ventas" }
+    if id_ubicacion == super::UBICACION_BODEGA { "Bodega" } else { "Piso de Venta" }
 }
 
 /// Bloquea las filas de existencias del producto en la ubicación y devuelve el total disponible.

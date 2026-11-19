@@ -108,7 +108,7 @@ Lectura para cualquier rol autenticado.
 | `/muebles`, `/muebles/{id}` | Jefe |
 | `/editoriales` (POST) | Jefe o Bodega (alta al recibir la compra) |
 | `/editoriales/{id}` (PUT/DELETE) | Jefe |
-| `/proveedores` (POST) | Jefe o Bodega |
+| `/proveedores` (POST) | Jefe o Bodega (la app ya no muestra el alta a Bodega: decisión del equipo, 19-nov) |
 | `/proveedores/{id}` (PUT/DELETE) | Jefe |
 
 El Gerente no administra catálogos. No se permiten registros repetidos.
