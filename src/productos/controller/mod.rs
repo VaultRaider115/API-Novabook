@@ -181,6 +181,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         )
         .route("/inventarios/actual", get(inventario_mensual::inventario_actual))
         .route("/inventarios/{id}/conteos", put(inventario_mensual::registrar_conteo))
+        .route("/inventarios/{id}/devolucion", get(inventario_mensual::pendientes_devolucion))
         .route("/inventarios/{id}/cerrar", post(inventario_mensual::cerrar_inventario))
         .route("/devoluciones-cliente", post(devolucion::registrar_devolucion_cliente_vendedor))
         .route(

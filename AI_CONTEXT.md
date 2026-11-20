@@ -142,6 +142,11 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
 - `GET /devoluciones/{id}/pdf/libros|revistas`: acta.
 - `POST /inventarios`, `GET /inventarios/actual`,
   `PUT /inventarios/{id}/conteos`, `POST /inventarios/{id}/cerrar`.
+- `GET /inventarios/{id}/devolucion`: títulos que van a devolución (solicitud
+  ABIERTA con cualquier stock, o añejado en piso / ya contado) con
+  `a_devolver` (piso + bodega + apartadas), `encontradas` (lo contado) y
+  `faltantes` = max(0, piso − encontradas); el encabezado suma títulos,
+  piezas a devolver, encontradas y faltantes (`armar_pendientes`, con pruebas).
 
 ### Jefe (`/api/jefe`)
 
@@ -205,6 +210,10 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
     tener espacio) y `mueble_destino` del folio se actualiza.
 - **Venta**: lleva `nombre_cliente` y `metodo_pago` (no hay tabla de
   clientes); sin stock en piso no se vende.
+- **Límites de texto** (`src/limites.rs`, constantes únicas; Qt usa los mismos
+  en `src/core/Limites.h`): nombre del cliente 60 y búsqueda de productos 100
+  caracteres. `validar_largo` responde 400 con "… no puede pasar de N
+  caracteres (tiene M)".
 - **Devolución de cliente**: ticket de 15 días o menos; no más de lo vendido
   (contando devoluciones previas); reembolso al precio del ticket. Sin
   defecto regresa a piso; con defecto va a `apartados`. Cambio solo por igual

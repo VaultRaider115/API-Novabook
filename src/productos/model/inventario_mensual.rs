@@ -50,6 +50,40 @@ pub struct InventarioDetalle {
     pub items: Vec<DetalleInventarioItem>,
 }
 
+/// Un título que va a devolución mientras se cuenta: cuánto hay que regresar
+/// y cuántas piezas de piso ya encontró el vendedor.
+#[derive(Debug, Clone, Serialize)]
+pub struct DevolucionPendienteItem {
+    pub codigo_ean: i64,
+    pub titulo: String,
+    pub proveedor: String,
+    /// ANEJAMIENTO | SOLICITUD_EDITORIAL
+    pub motivo_devolucion: String,
+    pub en_piso: i32,
+    pub en_bodega: i32,
+    pub apartadas: i32,
+    /// Total a devolver del título: piso + bodega + apartadas.
+    pub a_devolver: i32,
+    /// Piezas de piso que ya escaneó el vendedor (lo contado).
+    pub encontradas: i32,
+    /// Piezas de piso que faltan por encontrar: max(0, en_piso - encontradas).
+    pub faltantes: i32,
+}
+
+/// Resumen para el encabezado del inventario: títulos y piezas por devolver.
+#[derive(Debug, Clone, Serialize)]
+pub struct DevolucionPendiente {
+    pub id_inventario: i64,
+    pub titulos: i32,
+    pub titulos_con_faltantes: i32,
+    pub piezas_a_devolver: i32,
+    pub en_piso: i32,
+    /// Encontradas en piso (sin contar las que sobran sobre el stock de piso).
+    pub encontradas: i32,
+    pub faltantes: i32,
+    pub items: Vec<DevolucionPendienteItem>,
+}
+
 /// Fija lo contado de un producto (el cliente suma los escaneos).
 #[derive(Debug, Clone, Deserialize)]
 pub struct ConteoRequest {

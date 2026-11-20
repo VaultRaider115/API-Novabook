@@ -8,6 +8,14 @@ Rama `integracion-validaciones`: migración al esquema unificado
 (`libreria_unificada-definitivo.sql`) y reglas del diagrama de procesos.
 
 ### Added
+- Revisión del 19-nov:
+  - `GET /api/vendedor/inventarios/{id}/devolucion`: lo que va a devolución
+    mientras se cuenta, con total a devolver por título, encontradas y
+    faltantes, y el contador general. Pruebas de `armar_pendientes`.
+  - `src/limites.rs`: límites de texto como constantes (cliente 60, búsqueda
+    100) y `validar_largo` con mensaje claro; se valida en la venta y en la
+    búsqueda de existencias. Pruebas de `validar_largo`; `test_e2e.sh` revisa
+    el cliente de 61 caracteres y el conteo de devolución.
 - Revisión del equipo (16-nov):
   - `GET /api/jefe/existencias`: título, stock y `id_proveedor` de cada EAN
     al capturar una solicitud de editorial (existencias trae `id_proveedor`

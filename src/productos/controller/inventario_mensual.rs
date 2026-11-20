@@ -10,7 +10,7 @@ use crate::{
     error::{ApiResponse, AppError, MessageResponse},
     productos::{
         model::{
-            ConteoRequest, CrearSolicitudEditorialRequest, InventarioDetalle, InventarioResumen,
+            ConteoRequest, CrearSolicitudEditorialRequest, DevolucionPendiente, InventarioDetalle, InventarioResumen,
             RevisionInventarioRequest, SolicitudEditorial,
         },
         service::InventarioMensualService,
@@ -42,6 +42,14 @@ pub async fn registrar_conteo(
 ) -> Result<Json<MessageResponse>, AppError> {
     InventarioMensualService::registrar_conteo(&state.pool, id, payload).await?;
     Ok(Json(MessageResponse::new("Conteo registrado")))
+}
+
+/// Títulos que van a devolución: total a devolver y piezas de piso encontradas / faltantes.
+pub async fn pendientes_devolucion(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Json<ApiResponse<DevolucionPendiente>>, AppError> {
+    Ok(Json(ApiResponse::success(InventarioMensualService::pendientes_devolucion(&state.pool, id).await?)))
 }
 
 pub async fn cerrar_inventario(

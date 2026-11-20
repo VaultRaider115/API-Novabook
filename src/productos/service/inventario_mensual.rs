@@ -3,8 +3,9 @@ use crate::{
     error::AppError,
     productos::{
         model::{
-            ConteoRequest, CrearSolicitudEditorialRequest, DIAS_ANEJAMIENTO, InventarioDetalle, InventarioResumen,
-            RevisionInventarioRequest, SolicitudEditorial,
+            ConteoRequest, CrearSolicitudEditorialRequest, DIAS_ANEJAMIENTO, DevolucionPendiente,
+            DevolucionPendienteItem, InventarioDetalle, InventarioResumen, RevisionInventarioRequest,
+            SolicitudEditorial,
         },
         repo::InventarioMensualRepo,
     },
@@ -49,6 +50,27 @@ fn normalizar_solicitud(req: CrearSolicitudEditorialRequest) -> Result<CrearSoli
     Ok(CrearSolicitudEditorialRequest { id_proveedor: req.id_proveedor, referencia, eans })
 }
 
+/// Completa cada título (total a devolver y faltantes) y suma el encabezado.
+/// Los títulos con piezas por encontrar van primero.
+fn armar_pendientes(id_inventario: i64, mut items: Vec<DevolucionPendienteItem>) -> DevolucionPendiente {
+    for it in &mut items {
+        it.a_devolver = it.en_piso + it.en_bodega + it.apartadas;
+        it.faltantes = (it.en_piso - it.encontradas).max(0);
+    }
+    items.sort_by(|a, b| (b.faltantes > 0).cmp(&(a.faltantes > 0)).then_with(|| a.titulo.cmp(&b.titulo)));
+    DevolucionPendiente {
+        id_inventario,
+        titulos: items.len() as i32,
+        titulos_con_faltantes: items.iter().filter(|i| i.faltantes > 0).count() as i32,
+        piezas_a_devolver: items.iter().map(|i| i.a_devolver).sum(),
+        en_piso: items.iter().map(|i| i.en_piso).sum(),
+        // Si encontró más de lo que dice el sistema, no cuenta de más en el total.
+        encontradas: items.iter().map(|i| i.encontradas.min(i.en_piso)).sum(),
+        faltantes: items.iter().map(|i| i.faltantes).sum(),
+        items,
+    }
+}
+
 impl InventarioMensualService {
     async fn detalle(pool: &DbPool, id: i64) -> Result<InventarioDetalle, AppError> {
         InventarioMensualRepo::obtener(pool, id)
@@ -64,6 +86,14 @@ impl InventarioMensualService {
             Some(id) => Ok(Some(Self::detalle(pool, id).await?)),
             None => Ok(None),
         }
+    }
+
+    /// Títulos que van a devolución en este inventario: cuánto hay que
+    /// regresar y cuántas piezas de piso faltan por encontrar.
+    pub async fn pendientes_devolucion(pool: &DbPool, id: i64) -> Result<DevolucionPendiente, AppError> {
+        let detalle = Self::detalle(pool, id).await?;
+        let items = InventarioMensualRepo::pendientes_devolucion(pool, id, detalle.resumen.dias_anejamiento).await?;
+        Ok(armar_pendientes(id, items))
     }
 
     pub async fn abrir(pool: &DbPool, actor_id: i64) -> Result<InventarioDetalle, AppError> {
@@ -159,8 +189,50 @@ impl InventarioMensualService {
 
 #[cfg(test)]
 mod tests {
-    use super::normalizar_solicitud;
-    use crate::productos::model::CrearSolicitudEditorialRequest;
+    use super::{armar_pendientes, normalizar_solicitud};
+    use crate::productos::model::{CrearSolicitudEditorialRequest, DevolucionPendienteItem};
+
+    fn item(titulo: &str, piso: i32, bodega: i32, apartadas: i32, encontradas: i32) -> DevolucionPendienteItem {
+        DevolucionPendienteItem {
+            codigo_ean: 1,
+            titulo: titulo.into(),
+            proveedor: "Planeta".into(),
+            motivo_devolucion: "SOLICITUD_EDITORIAL".into(),
+            en_piso: piso,
+            en_bodega: bodega,
+            apartadas,
+            a_devolver: 0,
+            encontradas,
+            faltantes: 0,
+        }
+    }
+
+    #[test]
+    fn pendientes_cuentan_total_a_devolver_y_faltantes() {
+        // 3 de 5 encontrados en piso; además 10 en bodega y 1 apartado.
+        let r = armar_pendientes(7, vec![item("Momo", 5, 10, 1, 3)]);
+        let m = &r.items[0];
+        assert_eq!(m.a_devolver, 16);
+        assert_eq!(m.faltantes, 2);
+        assert_eq!((r.titulos, r.titulos_con_faltantes, r.piezas_a_devolver), (1, 1, 16));
+        assert_eq!((r.en_piso, r.encontradas, r.faltantes), (5, 3, 2));
+    }
+
+    #[test]
+    fn pendientes_no_cuentan_de_mas_ni_faltantes_negativos() {
+        // Encontró 7 y el sistema dice 5: faltan 0 y en el total cuentan 5.
+        let r = armar_pendientes(7, vec![item("Momo", 5, 0, 0, 7), item("Sin piso", 0, 4, 0, 0)]);
+        assert!(r.items.iter().all(|i| i.faltantes == 0));
+        assert_eq!((r.encontradas, r.faltantes, r.titulos_con_faltantes), (5, 0, 0));
+        assert_eq!(r.piezas_a_devolver, 9);
+    }
+
+    #[test]
+    fn pendientes_con_faltantes_van_primero() {
+        let r = armar_pendientes(7, vec![item("A completo", 2, 0, 0, 2), item("B falta", 3, 0, 0, 1)]);
+        assert_eq!(r.items[0].titulo, "B falta");
+        assert_eq!(r.items[1].titulo, "A completo");
+    }
 
     fn req(referencia: &str, eans: Vec<i64>) -> CrearSolicitudEditorialRequest {
         CrearSolicitudEditorialRequest { id_proveedor: 1, referencia: referencia.into(), eans }
