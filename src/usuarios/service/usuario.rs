@@ -12,9 +12,9 @@ use crate::{
     },
 };
 
-const MAX_PASSWORD_LENGTH: usize = 16;
-const MAX_NAME_LENGTH: usize = 50;
-const MAX_SURNAME_LENGTH: usize = 30;
+const MAX_PASSWORD_LENGTH: usize = crate::limites::PASSWORD_MAX;
+const MAX_NAME_LENGTH: usize = crate::limites::USUARIO_NOMBRE_MAX;
+const MAX_SURNAME_LENGTH: usize = crate::limites::USUARIO_APELLIDO_MAX;
 const BCRYPT_COST: u32 = 10;
 
 /// Hashea siempre la contraseña recibida: nunca se guarda tal cual,

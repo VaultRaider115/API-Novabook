@@ -1,6 +1,7 @@
 use crate::{
     db::{DbPool, log_bitacora},
     error::AppError,
+    limites::{METODOS_PAGO, OBSERVACIONES_MAX, validar_largo_opt},
     productos::{
         model::{
             CrearDevolucionClienteRequest, DevolucionClienteResponse, PartidaCambio,
@@ -13,8 +14,6 @@ use crate::{
 pub struct DevolucionClienteService;
 
 const MAX_PARTIDAS: usize = 100;
-const MAX_OBSERVACIONES: usize = 200;
-const METODOS_PAGO: [&str; 3] = ["EFECTIVO", "TARJETA", "TRANSFERENCIA"];
 
 /// Valida la petición y la deja normalizada (resolución en mayúsculas,
 /// partidas agrupadas). Devuelve también el método de pago del cambio.
@@ -75,18 +74,13 @@ fn normalizar(mut req: CrearDevolucionClienteRequest) -> Result<(CrearDevolucion
         .unwrap_or_else(|| "EFECTIVO".to_string());
     if !METODOS_PAGO.contains(&metodo.as_str()) {
         return Err(AppError::BadRequest(format!(
-            "Método de pago inválido: {} (usa EFECTIVO, TARJETA o TRANSFERENCIA)",
+            "Método de pago inválido: {} (usa EFECTIVO o TARJETA)",
             metodo
         )));
     }
 
     let observaciones = req.observaciones.map(|o| o.trim().to_string()).filter(|o| !o.is_empty());
-    if observaciones.as_ref().is_some_and(|o| o.chars().count() > MAX_OBSERVACIONES) {
-        return Err(AppError::BadRequest(format!(
-            "Las observaciones no pueden exceder {} caracteres",
-            MAX_OBSERVACIONES
-        )));
-    }
+    validar_largo_opt("Las observaciones", observaciones.as_deref(), OBSERVACIONES_MAX)?;
 
     req.resolucion = resolucion;
     req.items = items;
@@ -171,6 +165,10 @@ mod tests {
         let mut r = req("CAMBIO", vec![(1, 1, false)], vec![(2, 1)]);
         r.metodo_pago = Some("cheque".into());
         assert!(normalizar(r).is_err());
+        // Transferencia se retiró como método de reembolso.
+        let mut r = req("REEMBOLSO", vec![(1, 1, false)], vec![]);
+        r.metodo_pago = Some("Transferencia".into());
+        assert!(normalizar(r).unwrap_err().to_string().contains("usa EFECTIVO o TARJETA"));
         let mut r = req("CAMBIO", vec![(1, 1, false)], vec![(2, 1)]);
         r.metodo_pago = Some(" tarjeta ".into());
         assert_eq!(normalizar(r).unwrap().1, "TARJETA");

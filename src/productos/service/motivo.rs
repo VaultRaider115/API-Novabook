@@ -1,6 +1,7 @@
 use crate::{
     db::{DbPool, log_bitacora},
     error::AppError,
+    limites::{DESCRIPCION_MAX, MOTIVO_NOMBRE_MAX, validar_largo, validar_largo_opt},
     productos::{
         model::{CrearMotivoRequest, Motivo},
         repo::MotivoRepo,
@@ -19,24 +20,13 @@ impl MotivoService {
         if nombre.is_empty() {
             return Err(AppError::BadRequest("El motivo es obligatorio".to_string()));
         }
-        // Límites = tamaño de las columnas en libreria_unificada-definitivo.sql
-        if nombre.chars().count() > 50 {
-            return Err(AppError::BadRequest(
-                "El nombre del motivo no puede exceder 50 caracteres".to_string(),
-            ));
-        }
+        validar_largo("El nombre del motivo", nombre, MOTIVO_NOMBRE_MAX)?;
         if nombre.chars().any(|c| c.is_ascii_digit()) {
             return Err(AppError::BadRequest(
                 "El nombre del motivo no puede contener números".to_string(),
             ));
         }
-        if let Some(desc) = req.descripcion.as_deref()
-            && desc.trim().chars().count() > 200
-        {
-            return Err(AppError::BadRequest(
-                "La descripción no puede exceder 200 caracteres".to_string(),
-            ));
-        }
+        validar_largo_opt("La descripción", req.descripcion.as_deref().map(str::trim), DESCRIPCION_MAX)?;
         Ok(())
     }
 

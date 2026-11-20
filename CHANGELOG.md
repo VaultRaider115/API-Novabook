@@ -8,6 +8,26 @@ Rama `integracion-validaciones`: migración al esquema unificado
 (`libreria_unificada-definitivo.sql`) y reglas del diagrama de procesos.
 
 ### Added
+- Revisión del 19-nov (3a):
+  - Búsqueda de productos (`validar_busqueda_producto`): hasta 30
+    caracteres; si es un EAN (solo dígitos con prefijo 977/978/979), hasta
+    13 dígitos ("Un EAN tiene 13 dígitos"). Con pruebas.
+  - `src/limites.rs` reúne todos los límites (motivos, muebles, catálogos,
+    proveedor, título, factura, observaciones, usuarios) y `validar_largo_opt`
+    y `validar_monto`; los servicios ya no repiten números sueltos y todos
+    responden "… no puede pasar de N caracteres (tiene M)". Se agregó el
+    largo en proveedores, autores, editoriales, título y periodicidad.
+  - La compra exige costo unitario mayor a $0 (`validar_monto`); el precio
+    del alta usa la misma regla (tope $99,999.99).
+  - `GET /api/vendedor/devoluciones/validar?id_proveedor&codigo_ean&cantidad`:
+    valida una partida al añadirla (existe, es de la editorial elegida y
+    alcanza bodega + apartados), con nombres en el mensaje.
+  - Ventas y devoluciones de cliente solo aceptan EFECTIVO o TARJETA
+    (`METODOS_PAGO`); las de antes con TRANSFERENCIA se conservan (sin
+    migración: `metodo_pago` es VARCHAR).
+  - Pruebas: `validar_largo_opt`, `validar_monto` y transferencia rechazada;
+    `test_e2e.sh` revisa costo $0, EAN fuera del catálogo, transferencia y
+    la validación de editorial.
 - Revisión del 19-nov:
   - `GET /api/vendedor/inventarios/{id}/devolucion`: lo que va a devolución
     mientras se cuenta, con total a devolver por título, encontradas y

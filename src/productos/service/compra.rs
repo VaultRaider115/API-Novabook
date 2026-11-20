@@ -1,6 +1,7 @@
 use crate::{
     db::{DbPool, log_bitacora},
     error::AppError,
+    limites::{FACTURA_MAX, OBSERVACIONES_MAX, validar_largo_opt, validar_monto},
     productos::{
         model::{
             CompraResponse, FiltroIncidencias, IncidenciaCompra, RegistrarCompraRequest, ReposicionRequest,
@@ -24,11 +25,8 @@ impl CompraService {
             ));
         }
 
-        if req.factura.as_deref().is_some_and(|f| f.chars().count() > 30) {
-            return Err(AppError::BadRequest(
-                "El número de factura no puede exceder 30 caracteres".to_string(),
-            ));
-        }
+        validar_largo_opt("El número de factura", req.factura.as_deref(), FACTURA_MAX)?;
+        validar_largo_opt("Las observaciones", req.observaciones.as_deref(), OBSERVACIONES_MAX)?;
 
         // Validar cada artículo y su EAN
         for item in &req.items {
@@ -41,6 +39,8 @@ impl CompraService {
                     item.codigo_ean, item.tipo_producto, tipo_detectado
                 )));
             }
+            // El costo es obligatorio: sin él el subtotal de la compra queda en $0.
+            validar_monto(&format!("El costo unitario del EAN {}", item.codigo_ean), item.costo_unitario)?;
         }
 
         let compra = CompraRepo::registrar_compra_transaccional(pool, actor_id, &req).await?;

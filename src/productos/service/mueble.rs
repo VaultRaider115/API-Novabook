@@ -1,6 +1,7 @@
 use crate::{
     db::{DbPool, log_bitacora},
     error::AppError,
+    limites::{DESCRIPCION_MAX, MUEBLE_CODIGO_MAX, MUEBLE_NOMBRE_MAX, validar_largo, validar_largo_opt},
     productos::{
         model::{CrearMuebleRequest, Mueble},
         repo::MuebleRepo,
@@ -21,12 +22,7 @@ impl MuebleService {
                 "El código del mueble es obligatorio".to_string(),
             ));
         }
-        // Límites = tamaño de las columnas en libreria_unificada-definitivo.sql
-        if codigo.chars().count() > 10 {
-            return Err(AppError::BadRequest(
-                "El código del mueble no puede exceder 10 caracteres".to_string(),
-            ));
-        }
+        validar_largo("El código del mueble", &codigo, MUEBLE_CODIGO_MAX)?;
         if !codigo
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-')
@@ -42,11 +38,7 @@ impl MuebleService {
                 "El nombre del mueble es obligatorio".to_string(),
             ));
         }
-        if nombre.chars().count() > 50 {
-            return Err(AppError::BadRequest(
-                "El nombre del mueble no puede exceder 50 caracteres".to_string(),
-            ));
-        }
+        validar_largo("El nombre del mueble", &nombre, MUEBLE_NOMBRE_MAX)?;
 
         if req.id_ubicacion != 1 && req.id_ubicacion != 2 {
             return Err(AppError::BadRequest(
@@ -71,13 +63,7 @@ impl MuebleService {
             ));
         }
 
-        if let Some(desc) = req.descripcion.as_deref()
-            && desc.trim().chars().count() > 200
-        {
-            return Err(AppError::BadRequest(
-                "La descripción no puede exceder 200 caracteres".to_string(),
-            ));
-        }
+        validar_largo_opt("La descripción", req.descripcion.as_deref().map(str::trim), DESCRIPCION_MAX)?;
 
         req.codigo_mueble = codigo;
         req.nombre_mueble = nombre;

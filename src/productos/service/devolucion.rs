@@ -1,10 +1,11 @@
 use crate::{
     db::{DbPool, log_bitacora},
     error::AppError,
+    limites::{OBSERVACIONES_MAX, validar_largo_opt},
     productos::{
         model::{
             AprobarDevolucionRequest, CrearDevolucionRequest, Devolucion, HistorialDevolucionQuery,
-            TipoProducto,
+            PartidaValidada, TipoProducto, ValidarPartidaQuery,
         },
         repo::DevolucionRepo,
     },
@@ -14,13 +15,27 @@ use crate::{
 
 pub struct DevolucionService;
 
-/// Máximo de las observaciones de aprobación/rechazo (devolucion.observaciones VARCHAR(200)).
-const MAX_OBSERVACIONES: usize = 200;
-
 /// Máximo de piezas por hoja/lote de devolución a proveedor.
 pub const LIMITE_PIEZAS_DEVOLUCION: i32 = 60;
 
 impl DevolucionService {
+    /// "Añadir" en la devolución a proveedor: valida la partida (existe, es de
+    /// la editorial elegida, alcanza el stock y no pasa de 60 piezas).
+    pub async fn validar_partida(pool: &DbPool, q: ValidarPartidaQuery) -> Result<PartidaValidada, AppError> {
+        if q.codigo_ean <= 0 {
+            return Err(AppError::BadRequest("Código EAN inválido".to_string()));
+        }
+        if q.cantidad <= 0 {
+            return Err(AppError::BadRequest("La cantidad debe ser mayor a 0".to_string()));
+        }
+        if q.cantidad > LIMITE_PIEZAS_DEVOLUCION {
+            return Err(AppError::BadRequest(format!(
+                "Una devolución no puede exceder {} piezas", LIMITE_PIEZAS_DEVOLUCION
+            )));
+        }
+        DevolucionRepo::validar_partida(pool, q.id_proveedor, q.codigo_ean, q.cantidad).await
+    }
+
     pub async fn crear_devolucion(
         pool: &DbPool,
         actor_id: i64,
@@ -160,12 +175,7 @@ impl DevolucionService {
                 "Debes indicar las observaciones del rechazo".to_string(),
             ));
         }
-        // Columna devolucion.observaciones VARCHAR(200).
-        if notas.is_some_and(|n| n.chars().count() > MAX_OBSERVACIONES) {
-            return Err(AppError::BadRequest(format!(
-                "Las observaciones no pueden exceder {} caracteres", MAX_OBSERVACIONES
-            )));
-        }
+        validar_largo_opt("Las observaciones", notas, OBSERVACIONES_MAX)?;
 
         let nuevo_estado = if req.aprobar {
             "APROBADO"

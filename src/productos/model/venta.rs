@@ -37,7 +37,7 @@ fn default_tipo_libro() -> TipoProducto {
 pub struct RegistrarVentaRequest {
     #[serde(default = "default_cliente")]
     pub cliente: String,
-    /// EFECTIVO | TARJETA | TRANSFERENCIA (ventas.metodo_pago)
+    /// EFECTIVO | TARJETA (ventas.metodo_pago; las ventas viejas pueden decir TRANSFERENCIA)
     #[serde(default = "default_metodo_pago")]
     pub metodo_pago: String,
     #[serde(default)]

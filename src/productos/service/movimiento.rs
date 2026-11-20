@@ -1,6 +1,7 @@
 use crate::{
     db::{DbPool, log_bitacora},
     error::AppError,
+    limites::{OBSERVACIONES_REQUISICION_MAX, validar_largo_opt},
     productos::{
         model::{
             FiltroRequisiciones, PartidaRequisicion, RecepcionRequest, RequisicionDetalle,
@@ -66,9 +67,7 @@ impl MovimientoService {
         req: RecepcionRequest,
     ) -> Result<RequisicionDetalle, AppError> {
         let folio = folio.trim();
-        if req.observaciones.as_deref().is_some_and(|o| o.chars().count() > 150) {
-            return Err(AppError::BadRequest("Las observaciones no pueden pasar de 150 caracteres".to_string()));
-        }
+        validar_largo_opt("Las observaciones", req.observaciones.as_deref(), OBSERVACIONES_REQUISICION_MAX)?;
         let (diferencias, acomodos) = RecepcionRepo::recibir(pool, folio, actor_id, &req).await?;
 
         let mut detalle = if diferencias.is_empty() {
@@ -92,6 +91,7 @@ impl MovimientoService {
         tipo: TipoMovimiento,
         req: RequisicionRequest,
     ) -> Result<RequisicionResponse, AppError> {
+        validar_largo_opt("Las observaciones", req.observaciones.as_deref(), OBSERVACIONES_REQUISICION_MAX)?;
         let items = normalizar_partidas(req.items)?;
 
         let (origen, destino, accion) = match tipo {
@@ -134,6 +134,7 @@ impl MovimientoService {
         actor_id: i64,
         req: TrasladoRequest,
     ) -> Result<TrasladoResponse, AppError> {
+        validar_largo_opt("Las observaciones", req.observaciones.as_deref(), OBSERVACIONES_REQUISICION_MAX)?;
         if req.codigo_ean <= 0 {
             return Err(AppError::BadRequest("Código EAN inválido".to_string()));
         }
@@ -181,6 +182,7 @@ impl MovimientoService {
         actor_id: i64,
         req: TrasladoRequest,
     ) -> Result<TrasladoResponse, AppError> {
+        validar_largo_opt("Las observaciones", req.observaciones.as_deref(), OBSERVACIONES_REQUISICION_MAX)?;
         if req.codigo_ean <= 0 {
             return Err(AppError::BadRequest(
                 "Código EAN / ISSN inválido".to_string(),
@@ -230,6 +232,7 @@ impl MovimientoService {
         actor_id: i64,
         req: TrasladoRequest,
     ) -> Result<TrasladoResponse, AppError> {
+        validar_largo_opt("Las observaciones", req.observaciones.as_deref(), OBSERVACIONES_REQUISICION_MAX)?;
         if req.codigo_ean <= 0 {
             return Err(AppError::BadRequest("Código EAN inválido".to_string()));
         }
@@ -277,6 +280,7 @@ impl MovimientoService {
         actor_id: i64,
         req: TrasladoRequest,
     ) -> Result<TrasladoResponse, AppError> {
+        validar_largo_opt("Las observaciones", req.observaciones.as_deref(), OBSERVACIONES_REQUISICION_MAX)?;
         if req.codigo_ean <= 0 {
             return Err(AppError::BadRequest(
                 "Código EAN / ISSN inválido".to_string(),

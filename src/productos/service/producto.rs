@@ -1,6 +1,7 @@
 use crate::{
     db::{DbPool, log_bitacora},
     error::AppError,
+    limites::{PERIODICIDAD_MAX, TITULO_MAX, validar_largo, validar_largo_opt, validar_monto},
     productos::{
         model::{
             Libro, RegistrarLibroRequest, RegistrarRevistaRequest, Revista, TipoProducto,
@@ -94,11 +95,8 @@ impl ProductoService {
                 "La cantidad no puede ser negativa".to_string(),
             ));
         }
-        if req.precio <= 0.0 || !req.precio.is_finite() {
-            return Err(AppError::BadRequest(
-                "El precio de venta debe ser mayor a $0".to_string(),
-            ));
-        }
+        validar_monto("El precio de venta", req.precio)?;
+        validar_largo("El título", req.nombre_libro.trim(), TITULO_MAX)?;
 
         let ubicacion = req.id_ubicacion.unwrap_or(UBICACION_BODEGA);
         let libro = ProductoRepo::guardar_o_actualizar_libro(pool, &req, ubicacion).await?;
@@ -148,11 +146,9 @@ impl ProductoService {
                 "La cantidad no puede ser negativa".to_string(),
             ));
         }
-        if req.precio <= 0.0 || !req.precio.is_finite() {
-            return Err(AppError::BadRequest(
-                "El precio de venta debe ser mayor a $0".to_string(),
-            ));
-        }
+        validar_monto("El precio de venta", req.precio)?;
+        validar_largo("El título", req.nombre_revista.trim(), TITULO_MAX)?;
+        validar_largo_opt("La periodicidad", req.periodicidad.as_deref().map(str::trim), PERIODICIDAD_MAX)?;
 
         let ubicacion = req.id_ubicacion.unwrap_or(UBICACION_BODEGA);
         let revista = ProductoRepo::guardar_o_actualizar_revista(pool, &req, ubicacion).await?;

@@ -142,6 +142,9 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
 - `GET /devoluciones/{id}/pdf/libros|revistas`: acta.
 - `POST /inventarios`, `GET /inventarios/actual`,
   `PUT /inventarios/{id}/conteos`, `POST /inventarios/{id}/cerrar`.
+- `GET /devoluciones/validar?id_proveedor&codigo_ean&cantidad`: valida una
+  partida al pulsar "Añadir" en la devolución a proveedor (existe, es de esa
+  editorial, alcanza bodega + apartados, máximo 60).
 - `GET /inventarios/{id}/devolucion`: títulos que van a devolución (solicitud
   ABIERTA con cualquier stock, o añejado en piso / ya contado) con
   `a_devolver` (piso + bodega + apartadas), `encontradas` (lo contado) y
@@ -210,10 +213,15 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
     tener espacio) y `mueble_destino` del folio se actualiza.
 - **Venta**: lleva `nombre_cliente` y `metodo_pago` (no hay tabla de
   clientes); sin stock en piso no se vende.
-- **Límites de texto** (`src/limites.rs`, constantes únicas; Qt usa los mismos
-  en `src/core/Limites.h`): nombre del cliente 60 y búsqueda de productos 100
-  caracteres. `validar_largo` responde 400 con "… no puede pasar de N
-  caracteres (tiene M)".
+- **Límites** (`src/limites.rs`, constantes únicas; Qt usa los mismos en
+  `src/core/Limites.h`): cliente 60, búsqueda de productos 30 (EAN con prefijo: 13 dígitos), motivo 50, descripción y
+  observaciones 200, requisición 150, mueble código 10 y nombre 50, género
+  45, autor 50/100, proveedor (nombre 50, RFC 13, teléfono 15, correo 100,
+  dirección 200, contacto 100), título 150, factura 30, usuario 50/30,
+  contraseña 16. `validar_largo` / `validar_largo_opt` responden 400 con
+  "… no puede pasar de N caracteres (tiene M)". `validar_monto`: precio y
+  costo mayores a $0 y hasta $99,999.99. `METODOS_PAGO` = EFECTIVO, TARJETA
+  (TRANSFERENCIA se retiró; los registros viejos la conservan).
 - **Devolución de cliente**: ticket de 15 días o menos; no más de lo vendido
   (contando devoluciones previas); reembolso al precio del ticket. Sin
   defecto regresa a piso; con defecto va a `apartados`. Cambio solo por igual

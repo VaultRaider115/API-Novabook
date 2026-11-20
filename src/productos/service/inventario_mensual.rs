@@ -1,6 +1,7 @@
 use crate::{
     db::{DbPool, log_bitacora},
     error::AppError,
+    limites::{OBSERVACIONES_MAX, REFERENCIA_SOLICITUD_MAX, validar_largo, validar_largo_opt},
     productos::{
         model::{
             ConteoRequest, CrearSolicitudEditorialRequest, DIAS_ANEJAMIENTO, DevolucionPendiente,
@@ -14,8 +15,6 @@ use crate::{
 pub struct InventarioMensualService;
 
 const MAX_CONTEO: i32 = 99_999;
-const MAX_OBSERVACIONES: usize = 200; // inventario.observaciones VARCHAR(200)
-const MAX_REFERENCIA: usize = 150; // solicitud_editorial.referencia VARCHAR(150)
 const MAX_EANS_SOLICITUD: usize = 200;
 
 /// Valida y deja sin repetidos los EAN de una solicitud de editorial.
@@ -26,12 +25,7 @@ fn normalizar_solicitud(req: CrearSolicitudEditorialRequest) -> Result<CrearSoli
             "Indica la referencia del correo de la editorial (asunto o fecha)".to_string(),
         ));
     }
-    if referencia.chars().count() > MAX_REFERENCIA {
-        return Err(AppError::BadRequest(format!(
-            "La referencia no puede exceder {} caracteres",
-            MAX_REFERENCIA
-        )));
-    }
+    validar_largo("La referencia", &referencia, REFERENCIA_SOLICITUD_MAX)?;
     let mut eans: Vec<i64> = Vec::new();
     for e in req.eans {
         if e <= 0 {
@@ -143,12 +137,7 @@ impl InventarioMensualService {
         if !req.aprobar && obs.is_none() {
             return Err(AppError::BadRequest("Indica por qué se rechaza el inventario".to_string()));
         }
-        if obs.as_ref().is_some_and(|o| o.chars().count() > MAX_OBSERVACIONES) {
-            return Err(AppError::BadRequest(format!(
-                "Las observaciones no pueden exceder {} caracteres",
-                MAX_OBSERVACIONES
-            )));
-        }
+        validar_largo_opt("Las observaciones", obs.as_deref(), OBSERVACIONES_MAX)?;
         let (productos, sumadas, descontadas) =
             InventarioMensualRepo::revisar(pool, id, actor_id, req.aprobar, obs.as_deref()).await?;
         let detalle = if req.aprobar {

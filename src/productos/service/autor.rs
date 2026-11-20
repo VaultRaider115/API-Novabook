@@ -1,6 +1,7 @@
 use crate::{
     db::{DbPool, existe_duplicado, log_bitacora},
     error::AppError,
+    limites::{AUTOR_APELLIDOS_MAX, AUTOR_NOMBRE_MAX, validar_largo},
     productos::{
         model::{ActualizarAutorRequest, Autor, CrearAutorRequest},
         repo::AutorRepo,
@@ -53,6 +54,8 @@ impl AutorService {
     ) -> Result<Autor, AppError> {
         validate_author_text(&req.nombre, "El nombre del autor")?;
         validate_author_text(&req.apellidos, "Los apellidos del autor")?;
+        validar_largo("El nombre del autor", req.nombre.trim(), AUTOR_NOMBRE_MAX)?;
+        validar_largo("Los apellidos del autor", req.apellidos.trim(), AUTOR_APELLIDOS_MAX)?;
 
         let mut req = req;
         req.nombre = req.nombre.trim().to_string();
@@ -84,6 +87,8 @@ impl AutorService {
     ) -> Result<Autor, AppError> {
         validate_author_text(&req.nombre, "El nombre del autor")?;
         validate_author_text(&req.apellidos, "Los apellidos del autor")?;
+        validar_largo("El nombre del autor", req.nombre.trim(), AUTOR_NOMBRE_MAX)?;
+        validar_largo("Los apellidos del autor", req.apellidos.trim(), AUTOR_APELLIDOS_MAX)?;
 
         let mut req = req;
         req.nombre = req.nombre.trim().to_string();
