@@ -1,7 +1,7 @@
 use crate::{
     db::{DbPool, log_bitacora},
     error::AppError,
-    limites::{NOMBRE_CLIENTE_MAX, validar_largo},
+    limites::{METODOS_PAGO, NOMBRE_CLIENTE_MAX, validar_largo},
     productos::{
         model::{RegistrarVentaRequest, VentaResponse},
         repo::VentaRepo,
@@ -29,6 +29,14 @@ impl VentaService {
             ));
         }
         validar_largo("El nombre del cliente", cliente_limpio, NOMBRE_CLIENTE_MAX)?;
+        // "TRANSFERENCIA" se retiró: las ventas viejas la conservan en la base.
+        let metodo = req.metodo_pago.trim().to_uppercase();
+        if !METODOS_PAGO.contains(&metodo.as_str()) {
+            return Err(AppError::BadRequest(format!(
+                "Método de pago inválido: {} (usa EFECTIVO o TARJETA)",
+                req.metodo_pago.trim()
+            )));
+        }
 
         let venta = VentaRepo::registrar_venta_transaccional(pool, actor_id, &req).await?;
 

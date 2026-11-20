@@ -1,7 +1,7 @@
 use crate::{
     db::DbPool,
     error::AppError,
-    limites::{BUSQUEDA_MAX, validar_largo},
+    limites::validar_busqueda_producto,
     productos::{
         model::{ExistenciaInventario, FiltroExistencias},
         repo::InventarioRepo,
@@ -16,7 +16,7 @@ impl InventarioService {
         params: FiltroExistencias,
     ) -> Result<Vec<ExistenciaInventario>, AppError> {
         if let Some(q) = params.q.as_deref() {
-            validar_largo("La búsqueda", q.trim(), BUSQUEDA_MAX)?;
+            validar_busqueda_producto(q)?;
         }
         InventarioRepo::consultar_existencias(pool, &params).await
     }

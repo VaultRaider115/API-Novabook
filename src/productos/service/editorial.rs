@@ -1,6 +1,7 @@
 use crate::{
     db::{DbPool, existe_duplicado, log_bitacora},
     error::AppError,
+    limites::{EDITORIAL_NOMBRE_MAX, RFC_MAX, validar_largo, validar_largo_opt},
     productos::{
         model::{CrearEditorialRequest, Editorial},
         repo::EditorialRepo,
@@ -18,9 +19,8 @@ impl EditorialService {
         if req.nombre_editorial.trim().is_empty() {
             return Err(AppError::BadRequest("El nombre de la editorial es obligatorio".to_string()));
         }
-        if req.rfc.as_deref().is_some_and(|r| r.len() > 13) {
-            return Err(AppError::BadRequest("El RFC no puede exceder 13 caracteres".to_string()));
-        }
+        validar_largo("El nombre de la editorial", req.nombre_editorial.trim(), EDITORIAL_NOMBRE_MAX)?;
+        validar_largo_opt("El RFC", req.rfc.as_deref().map(str::trim), RFC_MAX)?;
         Ok(())
     }
 

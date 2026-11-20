@@ -1,6 +1,7 @@
 use crate::{
     db::{DbPool, log_bitacora},
     error::AppError,
+    limites::{GENERO_MAX, validar_largo},
     productos::{
         model::{CrearGeneroRequest, Genero},
         repo::GeneroRepo,
@@ -21,11 +22,7 @@ impl GeneroService {
                 "El nombre del género es obligatorio".to_string(),
             ));
         }
-        if nombre.chars().count() > 45 {
-            return Err(AppError::BadRequest(
-                "El nombre del género no puede exceder 45 caracteres".to_string(),
-            ));
-        }
+        validar_largo("El nombre del género", nombre, GENERO_MAX)?;
         if nombre.chars().any(|c| c.is_ascii_digit()) {
             return Err(AppError::BadRequest(
                 "El nombre del género no puede contener números".to_string(),

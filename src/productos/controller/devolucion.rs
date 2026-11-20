@@ -12,12 +12,21 @@ use crate::{
     productos::{
         model::{
             AprobarDevolucionRequest, CrearDevolucionClienteRequest, CrearDevolucionRequest, Devolucion,
-            DevolucionClienteResponse, HistorialDevolucionQuery, TicketResponse, TipoProducto,
+            DevolucionClienteResponse, HistorialDevolucionQuery, PartidaValidada, TicketResponse, TipoProducto,
+            ValidarPartidaQuery,
         },
         service::{DevolucionClienteService, DevolucionService},
     },
     usuarios::model::Claims,
 };
+
+pub async fn validar_partida_devolucion(
+    State(state): State<AppState>,
+    Query(q): Query<ValidarPartidaQuery>,
+) -> Result<Json<ApiResponse<PartidaValidada>>, AppError> {
+    let res = DevolucionService::validar_partida(&state.pool, q).await?;
+    Ok(Json(ApiResponse::success_msg(res, "Partida validada")))
+}
 
 pub async fn crear_devolucion_vendedor(
     State(state): State<AppState>,

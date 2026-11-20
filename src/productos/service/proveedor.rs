@@ -1,6 +1,7 @@
 use crate::{
     db::{DbPool, existe_duplicado, log_bitacora},
     error::AppError,
+    limites::{CONTACTO_MAX, CORREO_MAX, DIRECCION_MAX, PROVEEDOR_NOMBRE_MAX, RFC_MAX, TELEFONO_MAX, validar_largo, validar_largo_opt},
     productos::{
         model::{ActualizarProveedorRequest, CrearProveedorRequest, Proveedor},
         repo::ProveedorRepo,
@@ -52,6 +53,12 @@ impl ProveedorService {
                 "El RFC o identificador fiscal es obligatorio".to_string(),
             ));
         }
+        validar_largo("El nombre del proveedor", req.nombre_proveedor.trim(), PROVEEDOR_NOMBRE_MAX)?;
+        validar_largo("El RFC", req.rfc.trim(), RFC_MAX)?;
+        validar_largo_opt("El teléfono", req.telefono.as_deref().map(str::trim), TELEFONO_MAX)?;
+        validar_largo_opt("El correo", req.correo.as_deref().map(str::trim), CORREO_MAX)?;
+        validar_largo_opt("La dirección", req.direccion.as_deref().map(str::trim), DIRECCION_MAX)?;
+        validar_largo_opt("La persona de contacto", req.persona_contacto.as_deref().map(str::trim), CONTACTO_MAX)?;
 
         Self::validar_unico(pool, &req.nombre_proveedor, &req.rfc, None).await?;
         let proveedor = ProveedorRepo::crear_proveedor(pool, &req).await?;
@@ -86,6 +93,12 @@ impl ProveedorService {
                 "El RFC o identificador fiscal es obligatorio".to_string(),
             ));
         }
+        validar_largo("El nombre del proveedor", req.nombre_proveedor.trim(), PROVEEDOR_NOMBRE_MAX)?;
+        validar_largo("El RFC", req.rfc.trim(), RFC_MAX)?;
+        validar_largo_opt("El teléfono", req.telefono.as_deref().map(str::trim), TELEFONO_MAX)?;
+        validar_largo_opt("El correo", req.correo.as_deref().map(str::trim), CORREO_MAX)?;
+        validar_largo_opt("La dirección", req.direccion.as_deref().map(str::trim), DIRECCION_MAX)?;
+        validar_largo_opt("La persona de contacto", req.persona_contacto.as_deref().map(str::trim), CONTACTO_MAX)?;
 
         Self::validar_unico(pool, &req.nombre_proveedor, &req.rfc, Some(id)).await?;
         let proveedor = ProveedorRepo::actualizar_proveedor(pool, id, &req).await?;

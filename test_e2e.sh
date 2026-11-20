@@ -173,6 +173,18 @@ fi
 COMPRAS_LIST=$(curl -s -X GET "$BASE_URL/bodega/compras" -H "Authorization: Bearer $TOKEN_BODEGA")
 echo "  ✓ Historial de compras consultado correctamente"
 
+# El costo unitario es obligatorio y mayor a $0 (src/limites.rs: validar_monto)
+COMPRA_CERO=$(curl -s -X POST "$BASE_URL/bodega/compras" -H "Authorization: Bearer $TOKEN_BODEGA" -H "Content-Type: application/json" \
+  -d '{"id_proveedor": 1, "items": [{"codigo_ean": 9786073832014, "cantidad": 1, "costo_unitario": 0}]}')
+echo "$COMPRA_CERO" | grep -q 'debe ser mayor a \$0' || { echo "Error: se aceptó una compra con costo \$0: $COMPRA_CERO"; exit 1; }
+echo "  ✓ La compra rechaza un costo unitario de \$0"
+
+# Un EAN que no está en el catálogo no entra a la compra
+COMPRA_NUEVO=$(curl -s -X POST "$BASE_URL/bodega/compras" -H "Authorization: Bearer $TOKEN_BODEGA" -H "Content-Type: application/json" \
+  -d '{"id_proveedor": 1, "items": [{"codigo_ean": 9780306406157, "cantidad": 1, "costo_unitario": 100}]}')
+echo "$COMPRA_NUEVO" | grep -q 'no está registrado' || { echo "Error: se aceptó un EAN fuera del catálogo: $COMPRA_NUEVO"; exit 1; }
+echo "  ✓ La compra rechaza un EAN que no está en el catálogo"
+
 # -----------------------------------------------------------------------------
 # 6. TRASLADOS Y VENTAS CON NOMBRE DE CLIENTE (VENDEDOR)
 # -----------------------------------------------------------------------------
@@ -258,6 +270,12 @@ else
   echo "Error: se devolvió más de lo vendido: $DC_MAS"; exit 1
 fi
 
+# Transferencia ya no es método de reembolso (ni de pago)
+DC_TRANS=$(curl -s -X POST "$BASE_URL/vendedor/devoluciones-cliente" -H "Authorization: Bearer $TOKEN_VENDEDOR" -H "Content-Type: application/json" \
+  -d '{"id_venta": 2, "resolucion": "REEMBOLSO", "metodo_pago": "TRANSFERENCIA", "items": [{"codigo_ean": 9786073868723, "cantidad": 1}]}')
+echo "$DC_TRANS" | grep -q 'usa EFECTIVO o TARJETA' || { echo "Error: se aceptó reembolso por transferencia: $DC_TRANS"; exit 1; }
+echo "  ✓ Transferencia ya no se acepta como método de reembolso"
+
 # -----------------------------------------------------------------------------
 # 7. DEVOLUCIÓN A PROVEEDOR Y DESCARGA DE PDF COMPLETO
 # -----------------------------------------------------------------------------
@@ -269,6 +287,13 @@ nueva_devolucion() {
     -d '{"id_proveedor": 1, "tipo_producto": "libro", "items": [{"codigo_ean": 9786073832014, "cantidad": 1, "id_motivo": 1}]}' \
     | grep -o '"id_devolucion":[0-9]*' | head -n1 | cut -d':' -f2
 }
+# "Añadir" valida la partida antes de registrar: editorial y stock
+VAL_OK=$(curl -s "$BASE_URL/vendedor/devoluciones/validar?id_proveedor=1&codigo_ean=9786073832014&cantidad=1" -H "Authorization: Bearer $TOKEN_VENDEDOR")
+echo "$VAL_OK" | grep -q '"success":true' || { echo "Error validando partida: $VAL_OK"; exit 1; }
+VAL_MAL=$(curl -s "$BASE_URL/vendedor/devoluciones/validar?id_proveedor=1&codigo_ean=9786073868723&cantidad=1" -H "Authorization: Bearer $TOKEN_VENDEDOR")
+echo "$VAL_MAL" | grep -q 'es de la editorial' || { echo "Error: se validó un libro de otra editorial: $VAL_MAL"; exit 1; }
+echo "  ✓ Al añadir se valida la editorial del libro (y se rechaza la de otro proveedor)"
+
 DEV_ID=$(nueva_devolucion)
 if [ -z "$DEV_ID" ]; then echo "Error creando devolución"; exit 1; fi
 echo "  ✓ Devolución #$DEV_ID registrada (PENDIENTE)"

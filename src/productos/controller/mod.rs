@@ -184,6 +184,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/inventarios/{id}/devolucion", get(inventario_mensual::pendientes_devolucion))
         .route("/inventarios/{id}/cerrar", post(inventario_mensual::cerrar_inventario))
         .route("/devoluciones-cliente", post(devolucion::registrar_devolucion_cliente_vendedor))
+        .route("/devoluciones/validar", get(devolucion::validar_partida_devolucion))
         .route(
             "/devoluciones",
             post(devolucion::crear_devolucion_vendedor)

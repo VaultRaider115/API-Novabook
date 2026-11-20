@@ -5,11 +5,73 @@ use crate::{
     error::AppError,
     productos::repo::stock,
     productos::model::{
-        Devolucion, HistorialDevolucionQuery, ItemDevolucion, ItemDevolucionRequest, TipoProducto,
+        Devolucion, HistorialDevolucionQuery, ItemDevolucion, ItemDevolucionRequest, PartidaValidada, TipoProducto,
     },
 };
 
 pub struct DevolucionRepo;
+
+impl DevolucionRepo {
+    /// Valida una partida al añadirla a la lista (antes de registrar): mismas
+    /// reglas que `registrar_devolucion`, con nombres en el mensaje.
+    pub async fn validar_partida(
+        pool: &MySqlPool,
+        id_proveedor: i32,
+        codigo_ean: i64,
+        cantidad: i32,
+    ) -> Result<PartidaValidada, AppError> {
+        let prov: String = sqlx::query("SELECT nombre_proveedor FROM proveedor WHERE id_proveedor = ?")
+            .bind(id_proveedor)
+            .fetch_optional(pool)
+            .await
+            .map_err(AppError::Database)?
+            .map(|r| r.get("nombre_proveedor"))
+            .ok_or_else(|| AppError::NotFound("Selecciona un proveedor válido".to_string()))?;
+
+        let fila = sqlx::query(
+            "SELECT p.tipo_producto, p.id_proveedor, pr.nombre_proveedor, \
+                    COALESCE(l.nombre_libro, r.nombre_revista, '') AS titulo, \
+                    COALESCE((SELECT SUM(e.cantidad) FROM existencias e JOIN mueble m ON m.id_mueble = e.id_mueble \
+                              WHERE e.codigo_ean = p.codigo_ean AND m.id_ubicacion = 2), 0) \
+                  + COALESCE((SELECT a.cantidad FROM apartados a WHERE a.codigo_ean = p.codigo_ean), 0) AS disponible \
+             FROM productos p \
+             JOIN proveedor pr ON pr.id_proveedor = p.id_proveedor \
+             LEFT JOIN libros l ON l.codigo_ean = p.codigo_ean \
+             LEFT JOIN revistas r ON r.codigo_ean = p.codigo_ean \
+             WHERE p.codigo_ean = ?",
+        )
+        .bind(codigo_ean)
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or_else(|| AppError::NotFound(format!("El EAN {} no está registrado en el catálogo", codigo_ean)))?;
+
+        let titulo: String = fila.get("titulo");
+        let id_prov_producto = row_get_i32(&fila, "id_proveedor");
+        if id_prov_producto != id_proveedor {
+            let suyo: String = fila.get("nombre_proveedor");
+            return Err(AppError::BadRequest(format!(
+                "\"{}\" es de la editorial {}, no de {}: va en otra devolución",
+                titulo, suyo, prov
+            )));
+        }
+        let disponible = row_get_i64(&fila, "disponible");
+        if disponible < cantidad as i64 {
+            return Err(AppError::BadRequest(format!(
+                "\"{}\": solo hay {} pieza(s) en bodega y apartados (pides {})",
+                titulo, disponible, cantidad
+            )));
+        }
+        Ok(PartidaValidada {
+            codigo_ean,
+            titulo,
+            tipo_producto: fila.get("tipo_producto"),
+            id_proveedor,
+            proveedor: prov,
+            disponible,
+        })
+    }
+}
 
 const DEVOLUCION_SELECT: &str = r#"
     SELECT d.id_devolucion,

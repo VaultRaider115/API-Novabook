@@ -55,6 +55,27 @@ pub struct ItemDevolucionRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ValidarPartidaQuery {
+    pub id_proveedor: i32,
+    pub codigo_ean: i64,
+    /// Piezas de este EAN en la lista, contando las que ya se habían añadido.
+    pub cantidad: i32,
+}
+
+/// Resultado de "Añadir" en la devolución a proveedor: el producto existe,
+/// es de la editorial (proveedor) elegida y alcanza lo de bodega + apartados.
+#[derive(Debug, Clone, Serialize)]
+pub struct PartidaValidada {
+    pub codigo_ean: i64,
+    pub titulo: String,
+    pub tipo_producto: String,
+    pub id_proveedor: i32,
+    pub proveedor: String,
+    /// Bodega + apartados (lo que se puede devolver).
+    pub disponible: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct CrearDevolucionRequest {
     pub id_proveedor: i32,
     #[serde(default = "default_tipo_libro")]
