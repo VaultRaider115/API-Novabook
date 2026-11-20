@@ -1,6 +1,7 @@
 use crate::{
     db::{DbPool, log_bitacora},
     error::AppError,
+    limites::{NOMBRE_CLIENTE_MAX, validar_largo},
     productos::{
         model::{RegistrarVentaRequest, VentaResponse},
         repo::VentaRepo,
@@ -27,6 +28,7 @@ impl VentaService {
                 "El nombre del cliente es obligatorio para registrar la venta".to_string(),
             ));
         }
+        validar_largo("El nombre del cliente", cliente_limpio, NOMBRE_CLIENTE_MAX)?;
 
         let venta = VentaRepo::registrar_venta_transaccional(pool, actor_id, &req).await?;
 

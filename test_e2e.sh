@@ -224,6 +224,15 @@ else
   echo "Error: Permitió venta con cliente vacío: $VENTA_NO_CLI"; exit 1
 fi
 
+# Nombre de cliente más largo que el límite (src/limites.rs: 60 caracteres)
+CLIENTE_LARGO=$(printf 'a%.0s' $(seq 1 61))
+VENTA_LARGA=$(curl -s -X POST "$BASE_URL/vendedor/ventas" \
+  -H "Authorization: Bearer $TOKEN_VENDEDOR" \
+  -H "Content-Type: application/json" \
+  -d "{\"cliente\": \"$CLIENTE_LARGO\", \"items\": [{\"codigo_ean\": 9786073832014, \"tipo_producto\": \"libro\", \"cantidad\": 1}]}")
+echo "$VENTA_LARGA" | grep -q 'no puede pasar de 60 caracteres (tiene 61)' || { echo "Error: no se validó el largo del cliente: $VENTA_LARGA"; exit 1; }
+echo "  ✓ Rechazó un nombre de cliente de 61 caracteres (límite 60)"
+
 # Venta exitosa con cliente
 VENTA_OK=$(curl -s -X POST "$BASE_URL/vendedor/ventas" \
   -H "Authorization: Bearer $TOKEN_VENDEDOR" \
@@ -371,6 +380,10 @@ curl -s -X PUT "$BASE_URL/vendedor/inventarios/$INV_ID/conteos" -H "Authorizatio
 ACT=$(curl -s "$BASE_URL/vendedor/inventarios/actual" -H "Authorization: Bearer $TOKEN_VENDEDOR")
 echo "$ACT" | grep -q '"codigo_ean":9771234567010,[^}]*"motivo_devolucion":"SOLICITUD_EDITORIAL"' || { echo "Error: al contar no se avisa que va a devolución: $ACT"; exit 1; }
 echo "  ✓ Mientras cuenta, el vendedor ve qué títulos separar para devolución"
+DEV=$(curl -s "$BASE_URL/vendedor/inventarios/$INV_ID/devolucion" -H "Authorization: Bearer $TOKEN_VENDEDOR")
+echo "$DEV" | grep -q '"codigo_ean":9771234567010,[^}]*"encontradas":3,"faltantes":' || { echo "Error: el conteo de devolución no trae lo encontrado: $DEV"; exit 1; }
+echo "$DEV" | grep -q '"piezas_a_devolver":' || { echo "Error: falta el contador general de devolución: $DEV"; exit 1; }
+echo "  ✓ Para devolución: total a devolver y encontrados / faltantes por título"
 CIERRE=$(curl -s -X POST "$BASE_URL/vendedor/inventarios/$INV_ID/cerrar" -H "Authorization: Bearer $TOKEN_VENDEDOR")
 echo "$CIERRE" | grep -q '"estado":"CERRADO"' || { echo "Error cerrando inventario: $CIERRE"; exit 1; }
 echo "$CIERRE" | grep -q '"codigo_ean":9771234567010,[^}]*"motivo_devolucion":"SOLICITUD_EDITORIAL"'   || { echo "Error: no se marcó lo que pidió la editorial: $CIERRE"; exit 1; }

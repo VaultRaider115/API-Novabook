@@ -7,7 +7,8 @@ use crate::{
     error::AppError,
     productos::{
         model::{
-            DetalleInventarioItem, InventarioDetalle, InventarioResumen, MOTIVO_ANEJAMIENTO, MOTIVO_SOLICITUD,
+            DetalleInventarioItem, DevolucionPendienteItem, InventarioDetalle, InventarioResumen, MOTIVO_ANEJAMIENTO,
+            MOTIVO_SOLICITUD,
             SolicitudEditorial, SolicitudEditorialItem,
         },
         repo::{
@@ -61,6 +62,73 @@ impl InventarioMensualRepo {
         let sql = sqlx::AssertSqlSafe(format!("{RESUMEN_SELECT} ORDER BY i.id_inventario DESC"));
         let filas = sqlx::query(sql).fetch_all(pool).await.map_err(AppError::Database)?;
         Ok(filas.iter().map(mapear_resumen).collect())
+    }
+
+    /// Títulos que van a devolución con su stock y lo contado en este
+    /// inventario. Misma regla que el cierre: lo que pidió una editorial
+    /// (solicitud ABIERTA, con cualquier stock) o lo añejado (sin ventas ni
+    /// compras en `dias` días) que hay en piso o ya se contó. Incluye los que el
+    /// vendedor todavía no escanea, para que sepa qué le falta encontrar.
+    pub async fn pendientes_devolucion(
+        pool: &DbPool,
+        id: i64,
+        dias: i32,
+    ) -> Result<Vec<DevolucionPendienteItem>, AppError> {
+        let filas = sqlx::query(
+            "SELECT * FROM ( \
+               SELECT p.codigo_ean, COALESCE(l.nombre_libro, rv.nombre_revista, '') AS titulo, pr.nombre_proveedor, \
+                 COALESCE((SELECT SUM(e.cantidad) FROM existencias e JOIN mueble m ON m.id_mueble = e.id_mueble \
+                           WHERE e.codigo_ean = p.codigo_ean AND m.id_ubicacion = 1), 0) AS en_piso, \
+                 COALESCE((SELECT SUM(e.cantidad) FROM existencias e JOIN mueble m ON m.id_mueble = e.id_mueble \
+                           WHERE e.codigo_ean = p.codigo_ean AND m.id_ubicacion = 2), 0) AS en_bodega, \
+                 COALESCE((SELECT a.cantidad FROM apartados a WHERE a.codigo_ean = p.codigo_ean), 0) AS apartadas, \
+                 COALESCE((SELECT di.cantidad_contada FROM detalle_inventario di \
+                           WHERE di.id_inventario = ? AND di.codigo_ean = p.codigo_ean), 0) AS encontradas, \
+                 CASE \
+                   WHEN EXISTS (SELECT 1 FROM detalle_solicitud_editorial ds \
+                        JOIN solicitud_editorial s ON s.id_solicitud = ds.id_solicitud \
+                        WHERE ds.codigo_ean = p.codigo_ean AND s.estado = 'ABIERTA') THEN ? \
+                   WHEN NOT EXISTS (SELECT 1 FROM detalle_ventas dv JOIN ventas v ON v.id_ventas = dv.id_ventas \
+                        WHERE dv.codigo_ean = p.codigo_ean AND v.fecha_hora >= NOW() - INTERVAL ? DAY) \
+                    AND NOT EXISTS (SELECT 1 FROM detalles_compras dc \
+                        JOIN compras_proveedor c ON c.id_compras_proveedor = dc.id_compras_proveedor \
+                        WHERE dc.codigo_ean = p.codigo_ean AND c.fecha_hora >= NOW() - INTERVAL ? DAY) THEN ? \
+                 END AS motivo_devolucion \
+               FROM productos p \
+               JOIN proveedor pr ON pr.id_proveedor = p.id_proveedor \
+               LEFT JOIN libros l ON l.codigo_ean = p.codigo_ean \
+               LEFT JOIN revistas rv ON rv.codigo_ean = p.codigo_ean \
+             ) t \
+             WHERE (t.motivo_devolucion = ? AND t.en_piso + t.en_bodega + t.apartadas > 0) \
+                OR (t.motivo_devolucion = ? AND (t.en_piso > 0 OR t.encontradas > 0)) \
+             ORDER BY t.titulo",
+        )
+        .bind(id)
+        .bind(MOTIVO_SOLICITUD)
+        .bind(dias)
+        .bind(dias)
+        .bind(MOTIVO_ANEJAMIENTO)
+        .bind(MOTIVO_SOLICITUD)
+        .bind(MOTIVO_ANEJAMIENTO)
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)?;
+        Ok(filas
+            .iter()
+            .map(|f| DevolucionPendienteItem {
+                codigo_ean: row_get_i64(f, "codigo_ean"),
+                titulo: f.get("titulo"),
+                proveedor: f.get("nombre_proveedor"),
+                motivo_devolucion: f.get("motivo_devolucion"),
+                en_piso: row_get_i32(f, "en_piso"),
+                en_bodega: row_get_i32(f, "en_bodega"),
+                apartadas: row_get_i32(f, "apartadas"),
+                encontradas: row_get_i32(f, "encontradas"),
+                // Los totales los calcula el servicio (armar_pendientes).
+                a_devolver: 0,
+                faltantes: 0,
+            })
+            .collect())
     }
 
     /// Id del inventario ABIERTO (solo puede haber uno a la vez).
