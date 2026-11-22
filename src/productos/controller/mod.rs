@@ -222,6 +222,9 @@ pub fn router(state: AppState) -> Router<AppState> {
             get(bitacora::consultar_movimiento_diario_jefe),
         )
         .route("/bitacora", get(bitacora::consultar_bitacora_jefe))
+        // Hito 2: tickets de venta (lista y detalle con lo ya devuelto).
+        .route("/ventas", get(venta::listar_tickets_jefe))
+        .route("/tickets/{id}", get(devolucion::consultar_ticket_vendedor))
         // Títulos y stock al capturar una solicitud de editorial.
         .route("/existencias", get(inventario::consultar_existencias_vendedor))
         .route("/inventarios", get(inventario_mensual::listar_inventarios))

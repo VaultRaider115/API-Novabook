@@ -11,6 +11,11 @@ use crate::{
 
 pub struct CompraRepo;
 
+/// El costo pasa del precio de venta (con tolerancia de medio centavo por redondeo).
+pub(crate) fn costo_supera_precio(costo: f64, precio: f64) -> bool {
+    costo - precio > 0.005
+}
+
 impl CompraRepo {
     pub async fn registrar_compra_transaccional(
         pool: &DbPool,
@@ -68,7 +73,7 @@ impl CompraRepo {
 
             // El producto debe existir y ser del proveedor de la compra
             let prod = sqlx::query(
-                "SELECT p.id_proveedor, COALESCE(l.nombre_libro, r.nombre_revista) AS nombre \
+                "SELECT p.id_proveedor, p.precio, COALESCE(l.nombre_libro, r.nombre_revista) AS nombre \
                  FROM productos p \
                  LEFT JOIN libros l ON l.codigo_ean = p.codigo_ean \
                  LEFT JOIN revistas r ON r.codigo_ean = p.codigo_ean \
@@ -92,6 +97,15 @@ impl CompraRepo {
                 )));
             }
             let nombre_prod: String = prod.try_get("nombre").unwrap_or_else(|_| format!("EAN {}", item.codigo_ean));
+
+            // Hito 2: no se vende más barato de lo que se compra (costo = precio sí se permite).
+            let precio = row_get_f64(&prod, "precio");
+            if costo_supera_precio(item.costo_unitario, precio) {
+                return Err(AppError::BadRequest(format!(
+                    "El costo unitario de '{}' (${:.2}) es mayor que su precio de venta (${:.2}): se vendería con pérdida",
+                    nombre_prod, item.costo_unitario, precio
+                )));
+            }
 
             if facturada > item.cantidad {
                 match faltantes.iter_mut().find(|f| f.0 == item.codigo_ean) {
@@ -289,5 +303,18 @@ impl CompraRepo {
         }
 
         Ok(list)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::costo_supera_precio;
+
+    #[test]
+    fn costo_contra_precio() {
+        assert!(!costo_supera_precio(100.0, 150.0));
+        assert!(!costo_supera_precio(150.0, 150.0)); // igual: se permite
+        assert!(!costo_supera_precio(0.1 + 0.2, 0.3)); // redondeo de punto flotante
+        assert!(costo_supera_precio(150.01, 150.0));
     }
 }

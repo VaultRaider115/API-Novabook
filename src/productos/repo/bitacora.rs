@@ -21,7 +21,7 @@ const CATEGORIA_SQL: &str = "CASE \
     WHEN UPPER(b.accion) LIKE 'CREAR%' OR UPPER(b.accion) LIKE 'ACTUALIZAR%' OR UPPER(b.accion) LIKE 'ELIMINAR%' THEN 'CATALOGO' \
     ELSE 'SISTEMA' END";
 
-fn fecha_valida(s: &str) -> bool {
+pub(crate) fn fecha_valida(s: &str) -> bool {
     let b = s.as_bytes();
     b.len() == 10
         && b[4] == b'-'
