@@ -8,6 +8,18 @@ Rama `integracion-validaciones`: migración al esquema unificado
 (`libreria_unificada-definitivo.sql`) y reglas del diagrama de procesos.
 
 ### Added
+- Cambios del hito 2 (21-nov, rama `hito2-cambios`):
+  - **No se vende más barato de lo que se compra**: la compra rechaza (400)
+    una partida cuyo costo unitario pase del precio de venta del producto
+    ("… es mayor que su precio de venta …: se vendería con pérdida"); costo
+    igual al precio sí se permite (`costo_supera_precio`, con prueba).
+  - `GET /api/jefe/ventas?desde&hasta&q`: tickets de venta para el Jefe
+    (por omisión, los de hoy), con vendedor, cliente, pago, total, títulos,
+    piezas y piezas ya devueltas; `q` busca por número de ticket (`#12`),
+    cliente o vendedor (hasta 60 caracteres).
+  - `GET /api/jefe/tickets/{id}`: detalle del ticket (lo vendido y lo
+    devuelto), el mismo de la devolución de cliente.
+  - `test_e2e.sh`: sección 12 con estos cambios (12/12).
 - Revisión del 19-nov (3a):
   - Búsqueda de productos (`validar_busqueda_producto`): hasta 30
     caracteres; si es un EAN (solo dígitos con prefijo 977/978/979), hasta

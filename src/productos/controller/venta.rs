@@ -1,13 +1,13 @@
 use axum::{
     Extension, Json,
-    extract::State,
+    extract::{Query, State},
 };
 
 use crate::{
     db::AppState,
     error::{ApiResponse, AppError},
     productos::{
-        model::{RegistrarVentaRequest, VentaResponse},
+        model::{FiltroVentas, RegistrarVentaRequest, TicketResumen, VentaResponse},
         service::VentaService,
     },
     usuarios::model::Claims,
@@ -23,4 +23,13 @@ pub async fn registrar_venta_vendedor(
         res,
         "Venta procesada exitosamente",
     )))
+}
+
+/// Tickets de venta (Jefe, hito 2): `?desde&hasta&q`.
+pub async fn listar_tickets_jefe(
+    State(state): State<AppState>,
+    Query(filtro): Query<FiltroVentas>,
+) -> Result<Json<ApiResponse<Vec<TicketResumen>>>, AppError> {
+    let res = VentaService::listar_tickets(&state.pool, filtro).await?;
+    Ok(Json(ApiResponse::success(res)))
 }

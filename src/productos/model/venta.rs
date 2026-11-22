@@ -53,6 +53,32 @@ fn default_cliente() -> String {
     "Público en General".to_string()
 }
 
+/// Filtro de `GET /api/jefe/ventas`: rango de días (YYYY-MM-DD, por omisión hoy)
+/// y texto libre (ticket, cliente o vendedor).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct FiltroVentas {
+    pub desde: Option<String>,
+    pub hasta: Option<String>,
+    pub q: Option<String>,
+}
+
+/// Renglón de la lista de tickets que consulta el Jefe (el detalle sale de
+/// `GET /api/jefe/tickets/{id}`).
+#[derive(Debug, Clone, Serialize)]
+pub struct TicketResumen {
+    pub id_venta: i64,
+    pub fecha_hora: String,
+    pub id_vendedor: i64,
+    pub vendedor: String,
+    pub nombre_cliente: String,
+    pub metodo_pago: String,
+    pub total: f64,
+    pub titulos: i32,
+    pub piezas: i32,
+    /// Piezas que el cliente ya devolvió de este ticket.
+    pub piezas_devueltas: i32,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct VentaResponse {
     pub id_venta: i64,

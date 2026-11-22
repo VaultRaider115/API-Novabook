@@ -157,6 +157,11 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
   `GET /devoluciones/{id}/pdf/libros|revistas`
 - `GET /movimientos/diarios`
 - `GET /bitacora?desde&hasta&categoria&page&per_page`
+- `GET /ventas?desde&hasta&q`: tickets de venta (hito 2; por omisión, los de
+  hoy). `q` busca por número de ticket (`#12`), cliente o vendedor (hasta
+  60). Cada renglón trae vendedor, cliente, pago, total, títulos, piezas y
+  `piezas_devueltas`.
+- `GET /tickets/{id}`: detalle del ticket (lo vendido y lo ya devuelto).
 - `GET /inventarios`, `GET /inventarios/{id}`, `PUT /inventarios/{id}/revisar`
 - `GET|POST /solicitudes-editorial`, `PUT /solicitudes-editorial/{id}/atender`
   (cada título trae `piezas`: piso + bodega + apartados)
@@ -173,8 +178,10 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
   6 a 7 dígitos (100000–9999999), obligatorio en el alta y sin repetirse.
   El alta es solo para EAN nuevos: si el EAN ya existe responde 409 ("ya
   está registrado como …; para agregar piezas usa Compras a Proveedor").
-- **Compra**: una sola editorial (proveedor) por factura; costo no
-  negativo, factura de hasta 30 caracteres; las piezas entran a un mueble de
+- **Compra**: una sola editorial (proveedor) por factura; costo mayor a $0
+  y **no mayor que el precio de venta** del producto (hito 2: no se vende
+  más barato de lo que se compra; igual sí se permite,
+  `costo_supera_precio`); factura de hasta 30 caracteres; las piezas entran a un mueble de
   bodega. `detalles_compras` guarda solo el subtotal: el costo unitario es
   `subtotal / cantidad`.
 - **Paquete incompleto** (paso 1, `IncidenciaRepo`): `cantidad` es lo que
@@ -287,10 +294,12 @@ Usuarios de prueba: `1001/admin123` (Gerente), `350976899/2501` (Jefe),
 - `cargo test`: pruebas unitarias (PDF, anchos de texto, formato de dinero,
   retorno máximo a bodega, URL sin contraseña, etc.).
 - `cargo clippy --all-targets`: debe quedar sin avisos.
-- `test_e2e.sh`: 11 secciones de punta a punta contra una base recién
+- `test_e2e.sh`: 12 secciones de punta a punta contra una base recién
   importada y la API corriendo. En Windows hay que usar el curl de System32,
   porque el de Git Bash rompe los acentos:
   `tr -d '\r' < test_e2e.sh > /tmp/e2e.sh && PATH=/c/WINDOWS/system32:$PATH bash /tmp/e2e.sh`
+  (desde PowerShell, mejor `bash -c 'PATH=/c/WINDOWS/system32:$PATH bash test_e2e.sh'`:
+  al pasar `"\r"` por PowerShell se pierde la barra y `tr` borra las "r").
 
 ## 11. Despliegue
 

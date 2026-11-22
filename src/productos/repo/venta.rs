@@ -1,10 +1,10 @@
-use sqlx::Row;
+use sqlx::{MySql, QueryBuilder, Row};
 
 use crate::{
-    db::{DbPool, row_get_f64},
+    db::{DbPool, row_get_f64, row_get_i32, row_get_i64},
     error::AppError,
     productos::{
-        model::{ItemVenta, RegistrarVentaRequest, TipoProducto, VentaResponse},
+        model::{ItemVenta, RegistrarVentaRequest, TicketResumen, TipoProducto, VentaResponse},
         repo::{UBICACION_TIENDA, stock::{self, Tx}},
     },
 };
@@ -137,5 +137,59 @@ impl VentaRepo {
             items: items_procesados,
             mensaje: "Venta registrada y procesada exitosamente".to_string(),
         })
+    }
+
+    /// Tickets de venta para el Jefe (hito 2), del más reciente al más viejo.
+    /// `desde`/`hasta` ya vienen validados (YYYY-MM-DD); `q` busca por número de
+    /// ticket, cliente o nombre del vendedor.
+    pub async fn listar_tickets(
+        pool: &DbPool,
+        desde: &str,
+        hasta: &str,
+        q: Option<&str>,
+    ) -> Result<Vec<TicketResumen>, AppError> {
+        let mut sql: QueryBuilder<MySql> = QueryBuilder::new(
+            "SELECT v.id_ventas, DATE_FORMAT(v.fecha_hora, '%Y-%m-%d %H:%i:%s') AS fecha, v.id_usuarios, \
+                    TRIM(CONCAT(u.nombre, ' ', COALESCE(u.apellido_paterno, ''))) AS vendedor, \
+                    v.nombre_cliente, v.metodo_pago, v.total, \
+                    (SELECT COUNT(DISTINCT dv.codigo_ean) FROM detalle_ventas dv WHERE dv.id_ventas = v.id_ventas) AS titulos, \
+                    (SELECT COALESCE(SUM(dv.cantidad), 0) FROM detalle_ventas dv WHERE dv.id_ventas = v.id_ventas) AS piezas, \
+                    (SELECT COALESCE(SUM(ddc.cantidad), 0) FROM detalle_devolucion_cliente ddc \
+                       JOIN devolucion_cliente dc ON dc.id_devolucion_cliente = ddc.id_devolucion_cliente \
+                      WHERE dc.id_ventas = v.id_ventas) AS devueltas \
+             FROM ventas v JOIN usuarios u ON u.id_usuarios = v.id_usuarios \
+             WHERE DATE(v.fecha_hora) BETWEEN ",
+        );
+        sql.push_bind(desde).push(" AND ").push_bind(hasta);
+        if let Some(texto) = q.map(str::trim).filter(|t| !t.is_empty()) {
+            let ticket = texto.trim_start_matches('#');
+            let patron = format!("%{}%", texto);
+            sql.push(" AND (v.nombre_cliente LIKE ")
+                .push_bind(patron.clone())
+                .push(" OR CONCAT(u.nombre, ' ', COALESCE(u.apellido_paterno, '')) LIKE ")
+                .push_bind(patron);
+            if let Ok(id) = ticket.parse::<i64>() {
+                sql.push(" OR v.id_ventas = ").push_bind(id);
+            }
+            sql.push(")");
+        }
+        sql.push(" ORDER BY v.fecha_hora DESC, v.id_ventas DESC");
+
+        let rows = sql.build().fetch_all(pool).await.map_err(AppError::Database)?;
+        Ok(rows
+            .iter()
+            .map(|r| TicketResumen {
+                id_venta: row_get_i64(r, "id_ventas"),
+                fecha_hora: r.get("fecha"),
+                id_vendedor: row_get_i64(r, "id_usuarios"),
+                vendedor: r.get("vendedor"),
+                nombre_cliente: r.get("nombre_cliente"),
+                metodo_pago: r.get("metodo_pago"),
+                total: row_get_f64(r, "total"),
+                titulos: row_get_i32(r, "titulos"),
+                piezas: row_get_i32(r, "piezas"),
+                piezas_devueltas: row_get_i32(r, "devueltas"),
+            })
+            .collect())
     }
 }
