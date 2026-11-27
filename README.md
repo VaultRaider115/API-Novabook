@@ -29,11 +29,11 @@ mysql -u root -e "source libreria_unificada-definitivo.sql"
 Con XAMPP en Windows (PowerShell):
 
 ```powershell
-& "C:\xampp\mysql\bin\mysql.exe" -u root -e "source C:/Proyectos/NovaBook-v2/docs/libreria_unificada-definitivo.sql"
+& "C:\xampp\mysql\bin\mysql.exe" -u root -e "source C:/Proyectos/NovaBook-v2/01_Documentacion/docs/libreria_unificada-definitivo.sql"
 ```
 
 `libreria_unificada-definitivo.sql` es una copia idéntica de
-`../docs/libreria_unificada-definitivo.sql`.
+`../01_Documentacion/docs/libreria_unificada-definitivo.sql`.
 
 Si la base se creó antes de alguno de estos cambios, aplica sus migraciones
 (son idempotentes):
