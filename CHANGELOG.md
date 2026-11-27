@@ -8,6 +8,23 @@ Rama `integracion-validaciones`: migración al esquema unificado
 (`libreria_unificada-definitivo.sql`) y reglas del diagrama de procesos.
 
 ### Added
+- Pruebas unitarias por caso de uso (21-nov, rama `pruebas-unitarias`):
+  - `src/pruebas/`: 217 pruebas en 32 casos de uso (los 19 del cronograma y
+    13 agregados del diagrama v4: RF02, RF16, RF22–RF30, registrar devolución
+    a proveedor y tickets de venta). Llaman al router real contra la base
+    `Libreria_pruebas`, que se crea sola en cada corrida.
+  - `docs/pruebas/`: `generar.ps1` + `generar_documento.py` arman el documento
+    "Pruebas unitarias NovaBook" (.docx con python-docx y .pdf con Edge) desde
+    una corrida real; `resultados_cargo_test.txt` guarda la última corrida.
+  - Dependencia de desarrollo: `tower` (`util`) para llamar al router sin red.
+  - `pruebas_unitarias/`: `Ejecutar_pruebas_unitarias.bat` (menú de 4
+    opciones: revisión e hito según el cronograma antes de los cambios y según
+    el actualizado) y `Pruebas_unitarias_NovaBook.ps1`, que corre las pruebas
+    y deja un reporte (.txt, .html, .csv y log) en `pruebas_unitarias/Reportes/`
+    (ignorado por git); más la guía de pruebas de la app y un LEEME con los
+    requisitos de cada laptop.
+  - Resultado: 214 aprobadas y 3 fallidas que exhiben dos defectos abiertos
+    (D-01 tipo del acta PDF; D-02 bloqueo mutuo en requisiciones simultáneas).
 - Cambios del hito 2 (21-nov, rama `hito2-cambios`):
   - **No se vende más barato de lo que se compra**: la compra rechaza (400)
     una partida cuyo costo unitario pase del precio de venta del producto

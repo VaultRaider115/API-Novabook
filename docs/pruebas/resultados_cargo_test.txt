@@ -1,0 +1,309 @@
+# Corrida de cargo test
+# Inicio: 2026-11-27 00:45:14  Fin: 2026-11-27 00:46:56
+# Equipo: NovaBook · rustc 1.100.0 (0ef1bc386 2026-11-09) · MariaDB 10.4.32-MariaDB
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.45s
+     Running unittests src\main.rs (target\debug\build\api_migrado/1d6828e1332318af\out\api_migrado-1d6828e1332318af.exe)
+
+running 264 tests
+test db::tests::oculta_la_contrasena_de_la_url ... ok
+test db::tests::recorta_por_caracteres_sin_romper_acentos ... ok
+test limites::tests::busqueda_titulo_hasta_30_y_ean_hasta_13 ... ok
+test limites::tests::rechaza_al_pasar_el_limite_con_mensaje_claro ... ok
+test productos::model::producto::tests::sku_acepta_solo_6_a_7_digitos ... ok
+test limites::tests::cuenta_caracteres_no_bytes ... ok
+test productos::model::producto::tests::ean_de_los_seeds_se_clasifican ... ok
+test limites::tests::opcional_vacio_pasa ... ok
+test limites::tests::acepta_hasta_el_limite ... ok
+test productos::repo::compra::tests::costo_contra_precio ... ok
+test productos::repo::recepcion::tests::rechaza_faltantes_repetidos_ajenos_y_negativos ... ok
+test productos::repo::movimiento::tests::regresa_como_maximo_la_mitad_de_lo_bajado ... ok
+test productos::repo::incidencia::tests::sin_factura_usa_el_numero_de_compra_y_el_proveedor ... ok
+test productos::repo::recepcion::tests::empareja_todas_las_partidas ... ok
+test productos::service::devolucion_cliente::tests::agrupa_por_ean_y_defecto ... ok
+test productos::repo::incidencia::tests::correo_lista_solo_lo_pendiente ... ok
+test limites::tests::monto_debe_ser_mayor_a_cero ... ok
+test productos::service::devolucion_cliente::tests::reglas_de_reembolso_y_cambio ... ok
+test productos::service::devolucion_cliente::tests::valida_metodo_de_pago_y_observaciones ... ok
+test productos::service::inventario_mensual::tests::pendientes_con_faltantes_van_primero ... ok
+test productos::service::inventario_mensual::tests::pendientes_cuentan_total_a_devolver_y_faltantes ... ok
+test productos::service::inventario_mensual::tests::pendientes_no_cuentan_de_mas_ni_faltantes_negativos ... ok
+test productos::service::inventario_mensual::tests::solicitud_exige_referencia_y_eans_validos ... ok
+test productos::service::inventario_mensual::tests::solicitud_quita_repetidos_y_espacios ... ok
+test productos::service::movimiento::tests::limita_el_numero_de_partidas ... ok
+test productos::service::movimiento::tests::rechaza_vacia_cantidades_y_ean_invalidos ... ok
+test productos::service::movimiento::tests::suma_ean_repetidos_y_conserva_orden ... ok
+test pruebas::cu01_login::pu_01_02_contrasena_incorrecta ... ok
+test pruebas::cu01_login::pu_01_01_login_correcto_de_cada_rol ... ok
+test pruebas::cu01_login::pu_01_03_usuario_inexistente ... ok
+test pruebas::cu01_login::pu_01_06_usuario_dado_de_baja ... ok
+test pruebas::cu01_login::pu_01_05_cuerpo_incompleto ... ok
+test pruebas::cu01_login::pu_01_04_contrasena_vacia ... ok
+test pruebas::cu02_usuarios::pu_02_01_alta_de_usuario ... ok
+test pruebas::cu02_usuarios::pu_02_02_id_repetido ... ok
+test pruebas::cu01_login::pu_01_07_acceso_en_bitacora ... ok
+test pruebas::cu02_usuarios::pu_02_04_nombre_con_numeros ... ok
+test pruebas::cu02_usuarios::pu_02_03_telefono_invalido ... ok
+test pruebas::cu02_usuarios::pu_02_05_contrasena_invalida ... ok
+test pruebas::cu02_usuarios::pu_02_06_rol_invalido ... ok
+test pruebas::cu02_usuarios::pu_02_07_modificar_y_asignar_rol ... ok
+test pruebas::cu02_usuarios::pu_02_08_baja_de_usuario ... ok
+test pruebas::cu02_usuarios::pu_02_09_no_baja_propia ... ok
+test pruebas::cu02_usuarios::pu_02_10_usuario_inexistente ... ok
+test pruebas::cu02_usuarios::pu_02_11_otros_roles_sin_acceso ... ok
+test pruebas::cu03_autores::pu_03_01_alta_de_autor ... ok
+test pruebas::cu03_autores::pu_03_02_autor_repetido ... ok
+test pruebas::cu03_autores::pu_03_03_validaciones_de_nombre ... ok
+test pruebas::cu03_autores::pu_03_04_modificar_autor ... ok
+test pruebas::cu03_autores::pu_03_05_eliminar_autor_sin_libros ... ok
+test pruebas::cu03_autores::pu_03_06_no_eliminar_autor_con_libros ... ok
+test pruebas::cu03_autores::pu_03_07_solo_el_jefe_escribe ... ok
+test pruebas::cu04_generos::pu_04_01_alta_de_genero ... ok
+test pruebas::cu04_generos::pu_04_02_genero_repetido ... ok
+test pruebas::cu04_generos::pu_04_03_validaciones ... ok
+test pruebas::cu04_generos::pu_04_04_modificar_genero ... ok
+test pruebas::cu04_generos::pu_04_05_eliminar_genero ... ok
+test pruebas::cu04_generos::pu_04_06_no_eliminar_genero_en_uso ... ok
+test pruebas::cu04_generos::pu_04_07_solo_el_jefe_escribe ... ok
+test pruebas::cu05_muebles::pu_05_01_alta_de_muebles ... ok
+test pruebas::cu05_muebles::pu_05_02_prefijo_segun_area ... ok
+test pruebas::cu05_muebles::pu_05_03_codigo_repetido ... ok
+test pruebas::cu05_muebles::pu_05_04_capacidad_y_area ... ok
+test pruebas::cu05_muebles::pu_05_05_capacidad_no_baja_de_lo_ocupado ... ok
+test pruebas::cu05_muebles::pu_05_06_no_cambia_area_con_piezas ... ok
+test pruebas::cu05_muebles::pu_05_07_eliminar_mueble ... ok
+test pruebas::cu05_muebles::pu_05_08_solo_el_jefe_escribe ... ok
+test pruebas::cu06_motivos::pu_06_01_alta_de_motivo ... ok
+test pruebas::cu06_motivos::pu_06_02_motivo_repetido ... ok
+test pruebas::cu06_motivos::pu_06_03_nombre_obligatorio ... ok
+test pruebas::cu06_motivos::pu_06_04_limite_de_caracteres ... ok
+test pruebas::cu06_motivos::pu_06_05_modificar_motivo ... ok
+test pruebas::cu06_motivos::pu_06_06_eliminar_motivo ... ok
+test pruebas::cu06_motivos::pu_06_07_solo_el_jefe_escribe ... ok
+test pruebas::cu07_registrar_libros::pu_07_01_alta_correcta ... ok
+test pruebas::cu07_registrar_libros::pu_07_02_digito_verificador_incorrecto ... ok
+test pruebas::cu07_registrar_libros::pu_07_03_prefijo_incorrecto ... ok
+test pruebas::cu07_registrar_libros::pu_07_04_ean_ya_registrado ... ok
+test pruebas::cu07_registrar_libros::pu_07_05_reglas_del_sku ... ok
+test pruebas::cu07_registrar_libros::pu_07_06_precio_de_venta ... ok
+test pruebas::cu07_registrar_libros::pu_07_07_titulo_largo ... ok
+test pruebas::cu07_registrar_libros::pu_07_08_mueble_de_piso ... ok
+test pruebas::cu07_registrar_libros::pu_07_09_solo_bodega ... ok
+test pruebas::cu08_registrar_revistas::pu_08_01_alta_correcta ... ok
+test pruebas::cu08_registrar_revistas::pu_08_02_ean_de_libro ... ok
+test pruebas::cu08_registrar_revistas::pu_08_03_digito_verificador ... ok
+test pruebas::cu08_registrar_revistas::pu_08_04_editorial_obligatoria ... ok
+test pruebas::cu08_registrar_revistas::pu_08_05_duplicados ... ok
+test pruebas::cu08_registrar_revistas::pu_08_06_precio_y_nombre ... ok
+test pruebas::cu08_registrar_revistas::pu_08_07_solo_bodega ... ok
+test pruebas::cu09_compra_proveedor::pu_09_01_compra_completa ... ok
+test pruebas::cu09_compra_proveedor::pu_09_02_costo_contra_precio ... ok
+test pruebas::cu09_compra_proveedor::pu_09_03_costo_cero ... ok
+test pruebas::cu09_compra_proveedor::pu_09_04_producto_fuera_del_catalogo ... ok
+test pruebas::cu09_compra_proveedor::pu_09_05_producto_de_otro_proveedor ... ok
+test pruebas::cu09_compra_proveedor::pu_09_06_cantidades_incoherentes ... ok
+test pruebas::cu09_compra_proveedor::pu_09_07_validaciones_del_documento ... ok
+test pruebas::cu09_compra_proveedor::pu_09_08_solo_bodega ... ok
+test pruebas::cu10_consultar_existencias::pu_10_01_busqueda_por_ean ... ok
+test pruebas::cu10_consultar_existencias::pu_10_02_busqueda_por_titulo ... ok
+test pruebas::cu10_consultar_existencias::pu_10_03_filtro_por_tipo ... ok
+test pruebas::cu10_consultar_existencias::pu_10_04_sin_resultados ... ok
+test pruebas::cu10_consultar_existencias::pu_10_05_limites_de_busqueda ... ok
+test pruebas::cu10_consultar_existencias::pu_10_06_sin_inyeccion_sql ... ok
+test pruebas::cu10_consultar_existencias::pu_10_07_permisos ... ok
+test pruebas::cu11_bodega_tienda_libros::pu_11_01_traslado_suelto ... ok
+test pruebas::cu11_bodega_tienda_libros::pu_11_02_requisicion_con_folio ... ok
+test pruebas::cu11_bodega_tienda_libros::pu_11_03_todo_o_nada ... ok
+test pruebas::cu11_bodega_tienda_libros::pu_11_04_una_sola_editorial ... ok
+test pruebas::cu11_bodega_tienda_libros::pu_11_05_cantidades_invalidas ... ok
+test pruebas::cu11_bodega_tienda_libros::pu_11_06_producto_invalido ... ok
+test pruebas::cu11_bodega_tienda_libros::pu_11_07_solo_bodega ... ok
+test pruebas::cu12_bodega_tienda_revistas::pu_12_01_traslado_suelto ... ok
+test pruebas::cu12_bodega_tienda_revistas::pu_12_02_requisicion_de_revistas ... ok
+test pruebas::cu12_bodega_tienda_revistas::pu_12_03_libro_en_ruta_de_revistas ... ok
+test pruebas::cu12_bodega_tienda_revistas::pu_12_04_stock_insuficiente ... ok
+test pruebas::cu12_bodega_tienda_revistas::pu_12_05_una_sola_editorial ... ok
+test pruebas::cu12_bodega_tienda_revistas::pu_12_06_observaciones_largas ... ok
+test pruebas::cu13_tienda_bodega_libros::pu_13_01_sin_bajada_previa ... ok
+test pruebas::cu13_tienda_bodega_libros::pu_13_02_regla_de_la_mitad ... ok
+test pruebas::cu13_tienda_bodega_libros::pu_13_03_mitad_hacia_abajo_en_traslado_suelto ... ok
+test pruebas::cu13_tienda_bodega_libros::pu_13_04_requisicion_de_entrada_registrada ... ok
+test pruebas::cu13_tienda_bodega_libros::pu_13_05_stock_insuficiente_en_piso ... ok
+test pruebas::cu13_tienda_bodega_libros::pu_13_06_solo_vendedor ... ok
+test pruebas::cu13_tienda_bodega_libros::pu_13_07_requisiciones_simultaneas ... FAILED
+test pruebas::cu14_tienda_bodega_revistas::pu_14_01_retorno_sin_bajada ... ok
+test pruebas::cu14_tienda_bodega_revistas::pu_14_02_regla_de_la_mitad ... ok
+test pruebas::cu14_tienda_bodega_revistas::pu_14_03_libro_en_ruta_de_revistas ... ok
+test pruebas::cu14_tienda_bodega_revistas::pu_14_04_todo_o_nada ... ok
+test pruebas::cu14_tienda_bodega_revistas::pu_14_05_cantidad_cero ... ok
+test pruebas::cu15_ventas::pu_15_01_venta_correcta ... ok
+test pruebas::cu15_ventas::pu_15_02_ticket_mixto ... ok
+test pruebas::cu15_ventas::pu_15_03_cliente ... ok
+test pruebas::cu15_ventas::pu_15_04_metodo_de_pago ... ok
+test pruebas::cu15_ventas::pu_15_05_sin_stock_en_piso ... ok
+test pruebas::cu15_ventas::pu_15_06_todo_o_nada ... ok
+test pruebas::cu15_ventas::pu_15_07_partidas_invalidas ... ok
+test pruebas::cu15_ventas::pu_15_08_bitacora ... ok
+test pruebas::cu15_ventas::pu_15_09_solo_vendedor ... ok
+test pruebas::cu16_aprobar_devoluciones::pu_16_01_aprobar ... ok
+test pruebas::cu16_aprobar_devoluciones::pu_16_02_primero_apartados ... ok
+test pruebas::cu16_aprobar_devoluciones::pu_16_03_rechazo ... ok
+test pruebas::cu16_aprobar_devoluciones::pu_16_04_solo_una_vez ... ok
+test pruebas::cu16_aprobar_devoluciones::pu_16_05_no_existe ... ok
+test pruebas::cu16_aprobar_devoluciones::pu_16_06_solo_el_jefe ... ok
+test pruebas::cu16_aprobar_devoluciones::pu_16_07_detalle_antes_de_decidir ... ok
+test pruebas::cu17_pdf_libros::pu_17_01_acta_de_libros ... ok
+test pruebas::cu17_pdf_libros::pu_17_02_costo_y_precio ... ok
+test pruebas::cu17_pdf_libros::pu_17_03_solo_aprobadas ... ok
+test pruebas::cu17_pdf_libros::pu_17_04_quien_descarga ... ok
+test pruebas::cu17_pdf_libros::pu_17_05_no_existe ... ok
+test pruebas::cu17_pdf_libros::pu_17_06_tipo_de_acta_coincide ... FAILED
+test pruebas::cu18_pdf_revistas::pu_18_01_acta_de_revistas ... ok
+test pruebas::cu18_pdf_revistas::pu_18_02_datos_del_proveedor ... ok
+test pruebas::cu18_pdf_revistas::pu_18_03_apartados_y_bodega ... ok
+test pruebas::cu18_pdf_revistas::pu_18_04_pendiente ... ok
+test pruebas::cu18_pdf_revistas::pu_18_05_tipo_de_acta_coincide ... FAILED
+test pruebas::cu19_movimiento_diario::pu_19_01_movimiento_de_hoy ... ok
+test pruebas::cu19_movimiento_diario::pu_19_02_dia_sin_movimientos ... ok
+test pruebas::cu19_movimiento_diario::pu_19_03_filtro_por_categoria ... ok
+test pruebas::cu19_movimiento_diario::pu_19_04_paginacion ... ok
+test pruebas::cu19_movimiento_diario::pu_19_05_fechas_invalidas ... ok
+test pruebas::cu19_movimiento_diario::pu_19_06_solo_el_jefe ... ok
+test pruebas::cu20_gestionar_usuarios_jefe::pu_20_01_consultar ... ok
+test pruebas::cu20_gestionar_usuarios_jefe::pu_20_02_no_crea_usuarios ... ok
+test pruebas::cu20_gestionar_usuarios_jefe::pu_20_03_modifica_datos ... ok
+test pruebas::cu20_gestionar_usuarios_jefe::pu_20_04_no_asigna_roles ... ok
+test pruebas::cu20_gestionar_usuarios_jefe::pu_20_05_no_toca_gerentes ... ok
+test pruebas::cu20_gestionar_usuarios_jefe::pu_20_06_baja_de_vendedor ... ok
+test pruebas::cu20_gestionar_usuarios_jefe::pu_20_07_no_se_desactiva_a_si_mismo ... ok
+test pruebas::cu21_historial_devoluciones::pu_21_01_gerente_consulta ... ok
+test pruebas::cu21_historial_devoluciones::pu_21_02_filtro_por_estado ... ok
+test pruebas::cu21_historial_devoluciones::pu_21_03_filtro_por_proveedor ... ok
+test pruebas::cu21_historial_devoluciones::pu_21_04_gerente_solo_lectura ... ok
+test pruebas::cu21_historial_devoluciones::pu_21_05_otros_roles ... ok
+test pruebas::cu22_devolucion_cliente::pu_22_01_consultar_ticket ... ok
+test pruebas::cu22_devolucion_cliente::pu_22_02_reembolso_regresa_a_piso ... ok
+test pruebas::cu22_devolucion_cliente::pu_22_03_con_defecto_va_a_apartados ... ok
+test pruebas::cu22_devolucion_cliente::pu_22_04_no_mas_de_lo_vendido ... ok
+test pruebas::cu22_devolucion_cliente::pu_22_05_ticket_vencido ... ok
+test pruebas::cu22_devolucion_cliente::pu_22_06_producto_o_ticket_invalido ... ok
+test pruebas::cu22_devolucion_cliente::pu_22_07_cambio_por_menor_precio ... ok
+test pruebas::cu22_devolucion_cliente::pu_22_08_cambio_paga_diferencia ... ok
+test pruebas::cu22_devolucion_cliente::pu_22_09_metodo_de_reembolso ... ok
+test pruebas::cu23_levantar_inventario::pu_23_01_abrir_uno_a_la_vez ... ok
+test pruebas::cu23_levantar_inventario::pu_23_02_registrar_conteo ... ok
+test pruebas::cu23_levantar_inventario::pu_23_03_conteos_invalidos ... ok
+test pruebas::cu23_levantar_inventario::pu_23_04_cerrar_marca_devolucion ... ok
+test pruebas::cu23_levantar_inventario::pu_23_05_para_devolucion_en_tiempo_real ... ok
+test pruebas::cu23_levantar_inventario::pu_23_06_no_contar_cerrado ... ok
+test pruebas::cu24_revisar_inventario::pu_24_01_aprobar_ajusta_piso ... ok
+test pruebas::cu24_revisar_inventario::pu_24_02_sin_pasar_del_stock_actual ... ok
+test pruebas::cu24_revisar_inventario::pu_24_03_rechazo_con_motivo ... ok
+test pruebas::cu24_revisar_inventario::pu_24_04_solo_cerrados ... ok
+test pruebas::cu24_revisar_inventario::pu_24_05_consultas ... ok
+test pruebas::cu24_revisar_inventario::pu_24_06_solo_el_jefe ... ok
+test pruebas::cu25_solicitudes_editorial::pu_25_01_registrar ... ok
+test pruebas::cu25_solicitudes_editorial::pu_25_02_una_editorial ... ok
+test pruebas::cu25_solicitudes_editorial::pu_25_03_validaciones ... ok
+test pruebas::cu25_solicitudes_editorial::pu_25_04_atender ... ok
+test pruebas::cu25_solicitudes_editorial::pu_25_05_solo_el_jefe ... ok
+test pruebas::cu26_mis_devoluciones::pu_26_01_ve_las_suyas ... ok
+test pruebas::cu26_mis_devoluciones::pu_26_02_no_ve_las_ajenas ... ok
+test pruebas::cu26_mis_devoluciones::pu_26_03_motivo_del_rechazo ... ok
+test pruebas::cu26_mis_devoluciones::pu_26_04_acta_al_aprobarse ... ok
+test pruebas::cu26_mis_devoluciones::pu_26_05_solo_vendedor ... ok
+test pruebas::cu27_proveedores_editoriales::pu_27_01_alta_y_cambio_de_proveedor ... ok
+test pruebas::cu27_proveedores_editoriales::pu_27_02_sin_repetidos ... ok
+test pruebas::cu27_proveedores_editoriales::pu_27_03_validaciones ... ok
+test pruebas::cu27_proveedores_editoriales::pu_27_04_bodega_solo_consulta ... ok
+test pruebas::cu27_proveedores_editoriales::pu_27_05_editoriales ... ok
+test pruebas::cu27_proveedores_editoriales::pu_27_06_editorial_con_revistas ... ok
+test pruebas::cu27_proveedores_editoriales::pu_27_07_otros_roles ... ok
+test pruebas::cu28_cierre_sesion::pu_28_01_sin_token ... ok
+test pruebas::cu28_cierre_sesion::pu_28_02_token_invalido ... ok
+test pruebas::cu28_cierre_sesion::pu_28_03_token_vencido ... ok
+test pruebas::cu28_cierre_sesion::pu_28_04_baja_inmediata ... ok
+test pruebas::cu28_cierre_sesion::pu_28_05_formato_de_cabecera ... ok
+test pruebas::cu28_cierre_sesion::pu_28_06_sesion_valida ... ok
+test pruebas::cu29_incidencia_compra::pu_29_01_abre_incidencia ... ok
+test pruebas::cu29_incidencia_compra::pu_29_02_lista_abiertas ... ok
+test pruebas::cu29_incidencia_compra::pu_29_03_reposicion ... ok
+test pruebas::cu29_incidencia_compra::pu_29_04_no_mas_de_lo_pendiente ... ok
+test pruebas::cu29_incidencia_compra::pu_29_05_reposicion_invalida ... ok
+test pruebas::cu29_incidencia_compra::pu_29_06_cerrada ... ok
+test pruebas::cu30_recibir_requisicion::pu_30_01_pendiente ... ok
+test pruebas::cu30_recibir_requisicion::pu_30_02_confirmada ... ok
+test pruebas::cu30_recibir_requisicion::pu_30_03_corregida ... ok
+test pruebas::cu30_recibir_requisicion::pu_30_04_mitad_de_lo_recibido ... ok
+test pruebas::tests_infraestructura::cambia_el_nombre_de_la_base ... ok
+test pruebas::tests_infraestructura::genera_ean_con_digito_verificador_correcto ... ok
+test services::pdf::tests::anchos_reales_de_helvetica ... ok
+test services::pdf::tests::fecha_en_espanol ... ok
+test services::pdf::tests::formato_de_dinero ... ok
+test services::pdf::tests::genera_pdf_valido_con_acentos ... ok
+test services::pdf::tests::varias_paginas_si_no_cabe ... ok
+test services::pdf::tests::xref_apunta_a_los_objetos ... ok
+test usuarios::service::usuario::tests::hash_looking_password_is_always_hashed ... ok
+test usuarios::service::usuario::tests::names_enforce_required_and_schema_length_limits ... ok
+test usuarios::service::usuario::tests::nombres_sin_espacios_sobrantes ... ok
+test usuarios::service::usuario::tests::optional_password_accepts_empty_value ... ok
+test usuarios::service::usuario::tests::password_accepts_maximum_length ... ok
+test usuarios::service::usuario::tests::password_rejects_more_than_maximum_length ... ok
+test usuarios::service::usuario::tests::phone_must_have_exactly_ten_digits_when_provided ... ok
+test usuarios::service::usuario::tests::plaintext_stored_password_never_authenticates ... ok
+test usuarios::service::usuario::tests::required_password_rejects_blank_values ... ok
+test pruebas::cu30_recibir_requisicion::pu_30_05_una_sola_vez ... ok
+test usuarios::service::usuario::tests::telefono_acepta_texto_o_numero_de_10_digitos ... ok
+test usuarios::service::usuario::tests::telefono_rechaza_cero_inicial_letras_y_largo ... ok
+test pruebas::cu30_recibir_requisicion::pu_30_06_recepcion_invalida ... ok
+test pruebas::cu30_recibir_requisicion::pu_30_07_solo_salidas_y_solo_vendedor ... ok
+test pruebas::cu31_devolucion_proveedor::pu_31_01_registrar ... ok
+test pruebas::cu31_devolucion_proveedor::pu_31_02_maximo_60 ... ok
+test usuarios::service::usuario::tests::seeded_test_accounts_still_authenticate ... ok
+test pruebas::cu31_devolucion_proveedor::pu_31_03_otro_proveedor ... ok
+test pruebas::cu31_devolucion_proveedor::pu_31_04_stock_insuficiente ... ok
+test pruebas::cu31_devolucion_proveedor::pu_31_05_validaciones ... ok
+test pruebas::cu31_devolucion_proveedor::pu_31_06_validar_al_anadir ... ok
+test pruebas::cu32_tickets_venta::pu_32_01_tickets_de_hoy ... ok
+test pruebas::cu32_tickets_venta::pu_32_02_busqueda ... ok
+test pruebas::cu32_tickets_venta::pu_32_03_detalle_con_devolucion ... ok
+test pruebas::cu32_tickets_venta::pu_32_04_rango_de_fechas ... ok
+test pruebas::cu32_tickets_venta::pu_32_05_busqueda_larga ... ok
+test pruebas::cu32_tickets_venta::pu_32_06_solo_el_jefe ... ok
+
+failures:
+
+---- pruebas::cu13_tienda_bodega_libros::pu_13_07_requisiciones_simultaneas stdout ----
+[DB ERROR]: Database(MySqlDatabaseError { code: Some("40001"), number: 1213, message: "Deadlock found when trying to get lock; try restarting transaction" })
+[DB ERROR]: Database(MySqlDatabaseError { code: Some("40001"), number: 1213, message: "Deadlock found when trying to get lock; try restarting transaction" })
+[DB ERROR]: Database(MySqlDatabaseError { code: Some("40001"), number: 1213, message: "Deadlock found when trying to get lock; try restarting transaction" })
+[DB ERROR]: Database(MySqlDatabaseError { code: Some("40001"), number: 1213, message: "Deadlock found when trying to get lock; try restarting transaction" })
+[DB ERROR]: Database(MySqlDatabaseError { code: Some("40001"), number: 1213, message: "Deadlock found when trying to get lock; try restarting transaction" })
+[DB ERROR]: Database(MySqlDatabaseError { code: Some("40001"), number: 1213, message: "Deadlock found when trying to get lock; try restarting transaction" })
+[DB ERROR]: Database(MySqlDatabaseError { code: Some("40001"), number: 1213, message: "Deadlock found when trying to get lock; try restarting transaction" })
+[DB ERROR]: Database(MySqlDatabaseError { code: Some("40001"), number: 1213, message: "Deadlock found when trying to get lock; try restarting transaction" })
+[DB ERROR]: Database(MySqlDatabaseError { code: Some("40001"), number: 1213, message: "Deadlock found when trying to get lock; try restarting transaction" })
+[DB ERROR]: Database(MySqlDatabaseError { code: Some("40001"), number: 1213, message: "Deadlock found when trying to get lock; try restarting transaction" })
+
+thread 'pruebas::cu13_tienda_bodega_libros::pu_13_07_requisiciones_simultaneas' (35496) panicked at src\pruebas\cu13_tienda_bodega_libros.rs:126:5:
+10 de 20 peticiones respondieron 500 ("Error al procesar la operación en la base de datos"; en el log: MariaDB 1213, bloqueo mutuo)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- pruebas::cu17_pdf_libros::pu_17_06_tipo_de_acta_coincide stdout ----
+
+thread 'pruebas::cu17_pdf_libros::pu_17_06_tipo_de_acta_coincide' (16908) panicked at src\pruebas\cu17_pdf_libros.rs:123:5:
+generó un acta de revistas para libros (200 OK)
+
+---- pruebas::cu18_pdf_revistas::pu_18_05_tipo_de_acta_coincide stdout ----
+
+thread 'pruebas::cu18_pdf_revistas::pu_18_05_tipo_de_acta_coincide' (24868) panicked at src\pruebas\cu18_pdf_revistas.rs:90:5:
+generó un acta de libros para revistas (200 OK)
+
+
+failures:
+    pruebas::cu13_tienda_bodega_libros::pu_13_07_requisiciones_simultaneas
+    pruebas::cu17_pdf_libros::pu_17_06_tipo_de_acta_coincide
+    pruebas::cu18_pdf_revistas::pu_18_05_tipo_de_acta_coincide
+
+test result: FAILED. 261 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 101.10s
+
+error: test failed, to rerun pass `--bin api_migrado`

@@ -1,0 +1,678 @@
+===============================================================================
+ NOVABOOK — GUÍA DE PRUEBAS PARA LA LLAMADA DEL EQUIPO
+ Rama main (incluye el hito 2) · 21 de noviembre de 2026
+===============================================================================
+
+Objetivo: recorrer TODAS las pantallas con los 4 roles, ver que cada proceso
+funciona y provocar a propósito errores de captura para comprobar que el
+sistema los rechaza y explica la causa.
+
+Cómo leer esta guía:
+  [ ]  paso normal (debe funcionar)
+  [X]  PRUEBA DE ERROR: se captura algo mal a propósito
+  -->  lo que debe aparecer en pantalla (mensaje exacto o resultado)
+
+IMPORTANTE: sigue el orden. Cada parte usa los datos que deja la anterior
+(la compra llena bodega, la salida llena piso, la venta crea el ticket, etc.).
+Los números de stock, folios y tickets son los de una BASE RECIÉN IMPORTADA.
+
+CAMBIOS DE LA REVISIÓN DEL 19 DE NOVIEMBRE (dónde se prueban)
+  1. Inventario mensual: contador "Para devolución" y "X de Y encontrados"
+     por título, en tiempo real ................................. parte 5.8
+  2. Punto de venta: límite de caracteres con contador (cliente 60,
+     búsqueda 30) ................................................ parte 5.4
+  3. Punto de venta: recuadro con el libro (título, autor, editorial, ISBN,
+     precio, stock) y autor e ISBN en el carrito y el ticket ...... parte 5.4
+  4. Historial de movimientos: el rango de fechas se conserva; solo "Hoy"
+     lo regresa al día actual .................................... parte 6.3
+  5. Una sola vista con scroll y anclas en lugar de pestañas:
+     Inventario Mensual del Jefe (partes 3.7 y 6.2) y Compras a Proveedor
+     (parte 4.2)
+
+CAMBIOS DE LA SEGUNDA REVISIÓN DEL 19 DE NOVIEMBRE (dónde se prueban)
+  1. PDFs: se guardan solos en Descargas\NovaBook (no preguntan dónde) y se
+     abren al momento ..................................... partes 4.5 y 6.1
+  2. Límite de caracteres con contador "0/50" en todos los campos de texto
+     (motivos, muebles, catálogos, usuarios, alta, factura, rechazos)
+     ................................. partes 3.3, 3.4, 4.1, 4.2, 6.1 y 6.2
+  3. Costo y precio empiezan en $0 y deben ser mayores a $0 ...... parte 4.2
+  4. Recepción de mercancía: un EAN que no está en el catálogo no entra;
+     "Agregar nuevo libro" abre el alta en una ventana con el EAN puesto y,
+     al guardar, lo añade a la compra ............................ parte 4.2
+  5. Inventario: los géneros van en una fila con scroll horizontal (no se
+     corta ninguno) ...................................... partes 4.4 y 5.2
+  6. Devolución de cliente: sin Transferencia ................... parte 5.5
+  7. Devoluciones a proveedor: la editorial se valida al pulsar "Añadir"
+     (columna "Editorial" y "Validación de editorial") ......... parte 5.6
+  8. Historial: el rango y el tipo de evento se conservan aunque cierres
+     sesión ...................................................... parte 6.3
+  9. Campos de EAN o título (y búsqueda de inventario): título de hasta 30
+     caracteres; si empieza con 977/978/979 o son solo dígitos, máximo 13
+     ................................................. partes 4.2, 5.2 y 5.4
+ 10. Pantallas de lista + detalle en una sola vista con scroll y anclas:
+     Incidencias de Compra (4.3), Seguimiento de Salidas (4.6), Recepción
+     de Salida (5.1), Devolución de Cliente (5.5) e Inventario Mensual del
+     Vendedor (5.8)
+ 11. Historial de Movimientos sin páginas: puro scroll ........... parte 6.3
+
+CAMBIOS DEL HITO 2 — 21 DE NOVIEMBRE, CR-014 (dónde se prueban)
+  1. Compras: el costo unitario no puede pasar del precio de venta del
+     producto (igual sí se permite) ............................. parte 4.2
+  2. Compras: lápiz para modificar una partida (facturadas, llegaron y
+     costo) antes de registrar ................................... parte 4.2
+  3. Compras: subtotal y total = lo que llegó; si faltan piezas el total
+     dice "Total a registrar" con la factura entre paréntesis .... parte 4.2
+  4. Requisiciones: la cantidad no deja teclear 0 ......... partes 4.5 y 5.3
+  5. Jefe: pantalla nueva "Tickets de Venta" ..................... parte 6.4
+
+  Si solo quieres revisar estos cambios, sigue igual desde la parte 0: los
+  números esperados dependen de los pasos anteriores.
+
+
+-------------------------------------------------------------------------------
+ 0. PREPARACIÓN (antes de compartir pantalla)
+-------------------------------------------------------------------------------
+1. XAMPP: inicia MySQL.
+2. Base limpia (borra y vuelve a crear la BD Libreria). En PowerShell:
+     & "C:\xampp\mysql\bin\mysql.exe" -u root -e "source C:/Proyectos/NovaBook-v2/01_Documentacion/docs/libreria_unificada-definitivo.sql"
+3. API, en otra terminal:
+     cd C:\Proyectos\NovaBook-v2\API-Novabook
+     cargo run
+   Debe decir "Servidor REST NovaBook ejecutándose en http://127.0.0.1:8080"
+   y NO debe aparecer ningún aviso [ESQUEMA].
+4. App (Qt), en PowerShell:
+     $env:PATH = "C:\Qt\6.8.3\msvc2022_64\bin;" + $env:PATH
+     C:\Proyectos\NovaBook-v2\Frontend-NovaBook\build\novabook_frontend.exe
+5. Para la prueba de inactividad (parte 9) abre OTRA ventana de la app con
+   1 minuto de inactividad (en otra PowerShell):
+     $env:PATH = "C:\Qt\6.8.3\msvc2022_64\bin;" + $env:PATH
+     $env:INACTIVIDAD_MINUTOS = "1"
+     C:\Proyectos\NovaBook-v2\Frontend-NovaBook\build\novabook_frontend.exe
+
+Usuarios de prueba:
+  Gerente ............ 1001       / admin123   (Valeria)
+  Jefe de Depto. ..... 350976899  / 2501       (Marco)
+  Bodega ............. 628777130  / 7777       (Ian)
+  Vendedor ........... 628777129  / 8888       (Aldo)
+
+Productos de la semilla que se usan:
+  EAN            Título                                  Editorial (proveedor)    Piso  Bodega
+  9786073832014  Cien Años de Soledad (libro)            Planeta Mexico             10    45
+  9786070775390  El Hombre en Busca de Sentido (libro)   Planeta Mexico              0    40
+  9788497776639  El Regreso del Caballero... (libro)     Planeta Mexico              8    25
+  9786073868723  Un Himno a la Vida (libro)              Penguin Random House       10    50
+  9771234567010  National Geographic Mar 2026 (revista)  Planeta Mexico Infantil    10    35
+
+Para dar de alta un libro NUEVO usa el EAN 9786071234568 (su dígito
+verificador es correcto) con SKU 555555.
+
+
+-------------------------------------------------------------------------------
+ 1. LOGIN (diseño 10)
+-------------------------------------------------------------------------------
+[X] ID con letras o símbolos: escribe "abc" o "#1" en el ID de empleado.
+    --> El campo solo acepta dígitos (máximo 18).
+[X] Sin contraseña: ID 1001, contraseña vacía, "Ingresar al sistema".
+    --> "Ingresa tu contraseña."
+[X] Contraseña incorrecta: 1001 / 12345.
+    --> "Credenciales incorrectas"
+[ ] Correcto: 1001 / admin123.
+    --> Entra al Panel Principal con la insignia "Gerente".
+
+
+-------------------------------------------------------------------------------
+ 2. GERENTE (1001 / admin123)
+-------------------------------------------------------------------------------
+Menú: Panel Principal · Gestión de Usuarios · Devoluciones a Proveedor
+
+2.1 Panel Principal
+[ ] Se ven las tarjetas de resumen.
+
+2.2 Gestión de Usuarios (diseños 12 y 13)
+[ ] Aparecen los 4 usuarios con su rol y estado.
+[ ] "Registrar Nuevo Usuario": ID 777001, rol Vendedor, nombre Laura,
+    apellido Díaz, teléfono 8441234567, contraseña 1234 -> "Registrar Empleado".
+    --> El usuario aparece en la tabla.
+[X] Nombre o apellidos con números o símbolos: intenta "Laura2" o "Díaz#".
+    --> No los deja escribir (solo letras, espacios, apóstrofo, guion y punto).
+[X] Teléfono con 0 al inicio o con letras: intenta escribir 0844... o 844abc.
+    --> El campo no deja escribir el 0 inicial ni letras.
+[X] Teléfono incompleto: 84412.
+    --> "El teléfono debe tener exactamente 10 dígitos (tiene 5)"
+[X] ID repetido: registra otro empleado con ID 1001.
+    --> "El usuario con ID 1001 ya se encuentra registrado"
+[X] Cambiar tu propio rol: edita a Valeria (1001).
+    --> El campo Rol está bloqueado (nadie cambia su propio rol).
+[X] Darte de baja a ti mismo (icono de borrar en tu fila).
+    --> "No puedes dar de baja tu propio usuario"
+
+2.3 Devoluciones a Proveedor (solo lectura)
+[ ] El título dice "Control de Devoluciones a Proveedor".
+[ ] Lista el historial. NO hay botones Aprobar/Rechazar (eso es del Jefe).
+    Se vuelve a revisar en la parte 7, cuando ya haya un acta aprobada.
+
+Cerrar Sesión.
+
+
+-------------------------------------------------------------------------------
+ 3. JEFE DE DEPARTAMENTO — CATÁLOGOS (350976899 / 2501)
+-------------------------------------------------------------------------------
+Menú: Panel Principal · Historial de Movimientos · Aprobación de Devoluciones ·
+Gestión de Usuarios · Catálogo de Autores · Catálogo de Géneros · Catálogo de
+Motivos · Muebles y Estantería · Proveedores · Inventario Mensual
+
+3.1 Catálogo de Autores (diseños 1 y 11)
+[X] Nombre o apellidos con números: intenta "Isabel2".
+    --> No deja escribir el número.
+[ ] La lista de nacionalidades termina con "Otra" (también al editar un
+    autor con una nacionalidad que no estaba en la lista).
+[ ] "Registrar Nuevo Autor": Isabel Allende, Chilena -> aparece en la tabla.
+[X] Autor repetido: nombre Gabriel, apellidos García Márquez.
+    --> "Ya existe el autor Gabriel García Márquez"
+[X] Borrar un autor que tiene libros (Gabriel García Márquez).
+    --> El icono de borrar está deshabilitado.
+
+3.2 Catálogo de Géneros (diseños 14 y 15)
+[X] Números en el buscador o en el nombre del género: no los acepta.
+[ ] "Registrar Nuevo Género": Poesía -> aparece.
+[X] Género repetido: Historia.
+    --> "Ya existe un género registrado con ese nombre"
+[X] Borrar Psicologia (está en uso) -> el icono de borrar está deshabilitado.
+
+3.3 Catálogo de Motivos (diseños 16 y 17)
+[X] Números en el nombre del motivo: no los acepta. En la descripción sí
+    (ej. "Más de 3 días en tránsito").
+[ ] Límite: bajo el nombre hay un contador "0/50" y bajo la descripción
+    "0/200". Al llegar al máximo se pone rojo y ya no deja escribir.
+[ ] "Registrar Nuevo Motivo": Dañado en transporte.
+[X] Motivo repetido: Sobrestock.
+    --> "Ya existe un motivo registrado con ese nombre"
+
+3.4 Muebles y Estantería (diseños 18 y 19)
+[ ] "Registrar Nuevo Mueble": el código ya trae el prefijo según el Área
+    (P- para Piso de Venta, B- para Bodega) y solo se escribe el número.
+    Cambia el Área a Bodega y regresa a Piso: el prefijo cambia solo.
+[ ] Límite: el número del mueble tiene contador "0/8" (con el prefijo son
+    10), el nombre "0/50" y la descripción "0/200".
+[ ] Número 020, "Mesa de novedades", Piso de Venta, capacidad 40.
+    --> Se registra como P-020.
+[X] Sin número (solo el prefijo).
+    --> "Escribe el número del mueble después de "P-""
+[X] Código repetido: número 011 en Piso de Venta (P-011 ya existe).
+    --> "Ya existe un mueble registrado con ese código"
+[X] Código con letras, espacios o símbolos (A1, #, /): el campo solo acepta
+    números (el prefijo P-/B- lo pone el Área).
+[X] Capacidad menor a lo que ya tiene: edita B-011 (Psicologia - Bodega,
+    160 piezas), pon capacidad 100 y "Actualizar Mueble".
+    --> "La capacidad (100) no puede ser menor a las 160 piezas que ya tiene
+        el mueble"   (con piezas, tampoco deja cambiar el Área ni el género)
+
+3.5 Proveedores
+[ ] Se ven los 4 proveedores con su correo. Edita uno y guarda.
+[ ] La dirección se captura en cuatro campos: Calle, Número, Colonia y
+    Ciudad (al editar, la dirección guardada aparece repartida en ellos).
+[X] Teléfono con letras o guiones: el campo solo acepta números.
+[X] RFC repetido: registra un proveedor con RFC PME850101AB1.
+    --> "Ya existe un proveedor con el RFC 'PME850101AB1'"
+
+3.6 Gestión de Usuarios (versión del Jefe)
+[ ] La fila de Valeria (Gerente) dice "Solo Gerente": no la puede editar.
+[X] "Registrar Nuevo Usuario".
+    --> "Solo un Gerente General puede registrar nuevos usuarios"
+[X] Edita a Ian: en nombre o apellidos intenta escribir números o símbolos.
+    --> No los acepta. Cancela sin guardar.
+[X] Darse de baja a sí mismo (icono de borrar en la fila de Marco).
+    --> "No puedes dar de baja tu propio usuario"
+
+3.7 Inventario Mensual › Solicitudes de editorial
+    (la editorial pide de vuelta títulos; se usa en la parte 5.8)
+[ ] La pantalla es una sola vista con scroll: arriba "Inventarios" y abajo
+    "Solicitudes de editorial". Los botones de arriba (anclas) saltan a cada
+    sección y se marca la que estás viendo.
+[ ] Ancla "Solicitudes de editorial" -> "Registrar solicitud". Editorial: Planeta
+    Mexico Infantil. Referencia: "Correo 16/11: retiro de NatGeo marzo".
+[X] En la caja de EAN escribe, uno por renglón:
+      9771234567010   (National Geographic Mar 2026)
+      9786073832014   (Cien Años de Soledad, es de Planeta Mexico)
+      9786071234568   (todavía no existe; se da de alta en la parte 4.1)
+      97860738320     (le faltan dígitos)
+    --> La vista previa muestra cada título con Piso, Bodega y Por regresar,
+        y en Estado: "Listo", "Es de Planeta Mexico", "No existe" y
+        "EAN inválido". Abajo, en rojo: "Corrige antes de registrar: 1 EAN
+        mal escrito(s) · 1 no existe(n) · 1 de otra editorial".
+    Pulsa "Registrar solicitud":
+    --> "Revisa la vista previa: hay EAN inválidos, inexistentes, de otra
+        editorial o aún buscándose"
+[ ] Deja solo 9771234567010.
+    --> Resumen: "1 título(s) · 45 pieza(s) por regresar (piso + bodega)".
+    "Registrar solicitud" --> "Solicitud registrada".
+[ ] En la tabla: "1 título(s) · 45 pza(s)"; el icono del ojo muestra qué
+    títulos pidió la editorial y cuántas piezas hay de cada uno.
+
+Cerrar Sesión.
+
+
+-------------------------------------------------------------------------------
+ 4. BODEGA — ALTA, COMPRA INCOMPLETA Y SALIDA A PISO (628777130 / 7777)
+-------------------------------------------------------------------------------
+Menú: Panel Principal · Alta de Mercancía (EAN) · Compras a Proveedor ·
+Incidencias de Compra · Proveedores (solo consulta) · Requisición de Salida ·
+Seguimiento de Salidas · Inventario General
+
+4.1 Alta de Mercancía (diseño 9) — solo productos NUEVOS
+[X] Dígito verificador malo: EAN 9786070775391.
+    --> Bajo el campo: "Dígito verificador inválido: calculado 0 pero el
+        código termina en 1". Al pulsar "Registrar en Bodega":
+        "Ingresa un código EAN-13 válido (978/979 para libros o 977 para revistas)"
+[X] Prefijo no permitido: 1234567890128.
+    --> Bajo el campo: "Código '1234567890128' rechazado: Solo se admiten
+        libros (978/979) o revistas (977)"
+[X] SKU corto: EAN 9786071234568, SKU 12345.
+    --> "El SKU debe tener de 6 a 7 dígitos"
+[X] SKU repetido: EAN 9786071234568, SKU 884102 (es de "El Hombre...").
+    --> "Error al registrar libro: El SKU 884102 ya está asignado al producto
+        con EAN 9786070775390"
+[X] EAN que YA EXISTE: 9786070775390 con SKU 555555 (editorial Planeta
+    Mexico).
+    --> Al escribir el EAN sale el aviso "El libro "El Hombre en Busca de
+        Sentido" ya está registrado con este proveedor/editorial."
+    --> Al registrar: "Error al registrar libro: El EAN 9786070775390 ya está registrado como
+        "El Hombre en Busca de Sentido"; para agregar piezas usa Compras a
+        Proveedor"
+[X] Precio en 0 (el campo ya empieza en $0.00): EAN 9786071234568, título
+    "Pedro Páramo", SKU 555555 y "Registrar en Bodega" sin cambiar el precio.
+    --> "El precio de venta debe ser mayor a $0"
+[ ] El título tiene contador "0/150" y el precio empieza en $0.00 (no hay
+    precio sugerido).
+[ ] Correcto: EAN 9786071234568, título "Pedro Páramo", SKU 555555,
+    editorial Planeta Mexico, un género, un autor, precio 280 y un mueble de
+    bodega -> "Registrar en Bodega".
+    --> "Libro registrado exitosamente en Bodega con géneros y autor asociados"
+
+4.2 Compras a Proveedor (diseño 6) — PAQUETE INCOMPLETO (proceso nuevo)
+    Proveedor: Planeta Mexico. Número de factura: el "F-" ya está puesto;
+    escribe solo 100 (se guarda como F-100).
+[ ] La pantalla es una sola vista con scroll: arriba "Registrar factura" y
+    abajo "Facturas registradas"; los botones de arriba saltan a cada una.
+[X] Letras o símbolos en el número de factura: el campo solo acepta dígitos.
+    Bajo el número hay un contador "3/28" (con "F-" son 30).
+[X] En el EAN escribe más de 13 dígitos: no los acepta. Con letras busca por
+    título (en el Alta, en cambio, el EAN solo acepta dígitos).
+[X] Costo en $0: el costo unitario empieza en $0.00. Agrega 9786073832014
+    sin cambiarlo.
+    --> "El costo unitario debe ser mayor a $0". No entra a la tabla.
+[X] Producto de otra editorial: 9786073868723 (Un Himno a la Vida, de
+    Penguin), costo 100, "Añadir a Compra".
+    --> ""Un Himno a la Vida" es del proveedor Penguin Random House, no del
+        de esta factura". No entra a la tabla.
+[X] EAN que no está en el catálogo: 9780306406157, costo 100, "Añadir a
+    Compra".
+    --> En rojo: "El EAN 9780306406157 no está en el catálogo: no se puede
+        ingresar..." y aparece el botón "Agregar nuevo libro". No entra.
+[ ] Pulsa "Agregar nuevo libro".
+    --> Se abre el Alta en una ventana con el EAN ya puesto (no se puede
+        cambiar) y el proveedor Planeta Mexico fijo (el de la factura).
+[ ] Título "Los de Abajo", SKU 555556, un autor, un género, precio 220 y un
+    mueble de bodega -> "Registrar en Bodega".
+    --> La ventana se cierra, ""Los de Abajo" se dio de alta" y la partida
+        aparece en la tabla con la cantidad y el costo que habías puesto
+        (el costo también se compara con el precio de venta, 220). Quítala
+        con el bote de basura (el libro queda en el catálogo, sin piezas)
+        para que los números de abajo cuadren.
+[X] No llegó nada: una partida con Facturadas 5 y Llegaron 0, y registra.
+    --> "No llegó ninguna pieza: no hay compra que registrar"   (quítala)
+[X] Costo mayor que el precio de venta (hito 2): agrega 9786070775390 (El
+    Hombre..., se vende en $249) con costo 300.
+    --> "El costo de "El Hombre en Busca de Sentido" ($300.00) es mayor que
+        su precio de venta ($249.00): se vendería con pérdida". No entra.
+        (Costo igual al precio sí se permite.)
+[ ] Agrega 9786073832014 con Facturadas 20, Llegaron 20, costo 210.
+[ ] Modificar partida (hito 2): en esa fila, junto al bote, pulsa el lápiz.
+    --> Ventana "Modificar partida" con el título, el EAN y "precio de venta
+        $350.00". Cambia Llegaron a 15 -> "Guardar cambios".
+    --> "Partida "Cien Años de Soledad" actualizada". La fila dice "15 / 20"
+        en amarillo, el subtotal $3,150.00 (lo que llegó: 15 x $210) y el pie
+        "Piezas: 15 de 20 (faltan 5)".
+    Observa: "Llegaron" no puede pasar de "Facturadas" (el campo no lo deja).
+[X] Lápiz otra vez: costo 400 -> "Guardar cambios".
+    --> "El costo de "Cien Años de Soledad" ($400.00) es mayor que su precio
+        de venta ($350.00): se vendería con pérdida". La ventana no se
+        cierra. Cancela (la partida queda igual).
+[ ] Agrega 9786070775390 con Facturadas 10, Llegaron 10, costo 150.
+    --> Pie: "Total a registrar: $4,650.00 (factura $5,700.00)": se registra
+        lo que llegó; lo que falta va a la incidencia.
+[ ] "Registrar Compra e Incrementar Bodega".
+    --> Ventana "Paquete incompleto": la compra se registró con lo que llegó,
+        se abrió la incidencia #1 y faltan 5 piezas. Pregunta si abrir el correo.
+[ ] Responde Sí.
+    --> Se abre el programa de correo con destinatario
+        contacto@planetamexico.com.mx, asunto "Pedido incompleto · factura
+        F-100 · Planeta Mexico" y la lista de faltantes. No hace falta enviarlo.
+        (Si no hay programa de correo, el texto se copia al portapapeles.)
+[ ] Arriba, "Facturas registradas".
+    --> La factura F-100 de Planeta Mexico sale primero, con 2 títulos y
+        25 piezas (lo que llegó). Las compras de la semilla salen abajo.
+[ ] Icono del ojo (o doble clic) en F-100.
+    --> Lista de lo que se compró: Cien Años de Soledad 15 pzs y El Hombre
+        en Busca de Sentido 10 pzs, con costo unitario y subtotal.
+[ ] En el buscador escribe "Hombre" y luego "F-100": la tabla se filtra.
+
+4.3 Incidencias de Compra (pantalla nueva)
+[ ] Es una sola vista con scroll: arriba "Incidencias" y abajo "Detalle"; los
+    botones de arriba (anclas) saltan a cada sección. Al pulsar "Atender" la
+    vista baja sola al detalle; "Cerrar" la regresa a la lista.
+[ ] Aparece la incidencia #1 "Abierta" con 5 pzs faltantes. Pulsa "Atender".
+[ ] "Avisar al Proveedor" vuelve a abrir el correo.
+[ ] "Llegaron ahora" = 2 -> "Registrar Llegada".
+    --> "Llegada registrada; aún faltan 3 pzs"
+[ ] "Llegaron ahora" = 3 -> "Registrar Llegada".
+    --> "Faltantes recibidos en bodega: la incidencia quedó cerrada"
+    Observa: el campo no deja capturar más de lo que falta.
+
+4.4 Inventario General (la misma vista que el Vendedor)
+[ ] Busca "Cien": bodega 65 (45 + 15 + 5) y piso 10.
+[ ] Columna "Géneros": van en una sola fila; si un libro tiene varios, la
+    celda tiene una barra para recorrerlos a los lados (no se corta ninguno).
+
+4.5 Requisición de Salida Bodega > Piso de Venta (diseño 8)
+    Ahora todo se valida al pulsar "Añadir a Lista", no al registrar.
+[X] Mezclar editoriales: agrega 9786073832014 y después 9771234567010.
+    --> ""National Geographic Mar 2026" es de Planeta Mexico Infantil y esta
+        requisición es de Planeta Mexico. Registra esta primero y haz otra
+        para Planeta Mexico Infantil."
+[X] Stock insuficiente: vacía la lista y agrega 9786070775390 x 500.
+    --> Al pulsar "Añadir a Lista": ""El Hombre en Busca de Sentido": solo hay
+        50 en bodega". No entra a la lista.
+[X] EAN que no existe: 9786071234575 -> "Añadir a Lista".
+    --> "No hay ningún producto registrado con el EAN 9786071234575"
+[ ] Búsqueda por título: en el campo de EAN escribe "Soledad".
+    --> Sale una lista con "Cien Años de Soledad — 9786073832014 · Planeta
+        Mexico · Piso … / Bodega …". Elígelo: el campo queda con el EAN.
+[X] Cantidad en 0 (hito 2): selecciona el número de "Cantidad" y teclea 0.
+    --> No lo acepta (el campo sigue en 1). Si tecleas "05" queda 5; "10" sí
+        se puede. Lo mismo en la cantidad de cada fila de la lista.
+[ ] Cantidad 16 -> "Añadir a Lista". En la tabla, sube la cantidad con las
+    flechas: no pasa de lo que hay en bodega. Déjala en 16.
+[ ] "Registrar y Mandar a Piso".
+    --> Folio REQ-2026-n; el PDF se guarda solo en Descargas\NovaBook (ya no
+        pregunta dónde) y se abre. El aviso dice la ruta completa. Si ya
+        existía uno con ese nombre, se guarda como "... (2).pdf".
+
+4.6 Seguimiento de Salidas (pantalla nueva)
+[ ] Es una sola vista con scroll: arriba "Requisiciones" y abajo "Detalle"; los
+    botones de arriba (anclas) saltan a cada sección. Al pulsar "Ver" la
+    vista baja sola al detalle; "Cerrar" la regresa a la lista.
+[ ] La salida aparece "Por recibir" (el vendedor todavía no la confirma).
+
+Cerrar Sesión.
+
+
+-------------------------------------------------------------------------------
+ 5. VENDEDOR — RECEPCIÓN, VENTA Y DEVOLUCIONES (628777129 / 8888)
+-------------------------------------------------------------------------------
+Menú: Panel Principal · Consulta de Inventario General · Punto de Venta ·
+Devolución de Cliente · Recepción de Salida · Requisición de Entrada ·
+Devoluciones a Proveedor · Mis Devoluciones · Inventario Mensual
+
+5.1 Recepción de Salida (pantalla nueva; pasos 2 y 3 del diagrama)
+[ ] Es una sola vista con scroll: arriba "Requisiciones" y abajo "Detalle"; los
+    botones de arriba (anclas) saltan a cada sección. Al pulsar "Recibir" la
+    vista baja sola al detalle; "Cerrar" la regresa a la lista.
+[ ] Aparece el folio de la parte 4.5 "Por recibir". Pulsa "Recibir".
+[ ] Simula que llegaron 2 menos: Recibido = 14.
+    --> La columna Revisión dice "Faltan 2" y el botón cambia a
+        "Corregir y Reimprimir (1)".
+[ ] En "Mueble de piso" elige P-012 (el sistema había propuesto P-011).
+[ ] Observaciones: "Llegaron 2 menos". Pulsa "Corregir y Reimprimir".
+    --> Pide confirmación con el detalle (16 -> 14); acepta.
+    --> "Folio ... corregido con lo recibido" y se abre el PDF con el sello
+        CORREGIDA, el 16 tachado, el 14 y la columna MUEBLE.
+    Observa: el folio ya no tiene "Recibir" (solo se recibe una vez). Con el
+    filtro "Corregidas" aparece con "Ver".
+
+5.2 Consulta de Inventario General (diseño 2)
+[ ] Busca "Cien": piso 24 (10 en P-011 + 14 en P-012) y bodega 51
+    (los 2 que no llegaron regresaron a bodega).
+[ ] Los géneros de cada título van en una fila con scroll horizontal.
+
+5.3 Requisición de Entrada Piso de Venta > Bodega (diseño 5) — regla de la mitad
+    (el stock de piso se valida al añadir; la regla de la mitad, al registrar)
+[X] Cantidad en 0 (hito 2): teclea 0 en "Cantidad". --> No lo acepta.
+[X] Regresar más de la mitad: 9786073832014 x 8 -> registrar.
+    --> "No se registró la requisición: Del EAN 9786073832014 se bajaron 14 a
+        piso el <fecha y hora> y ya regresaron 0: solo pueden regresar 7 más
+        (como máximo la mitad; se debe exhibir al menos la otra mitad).
+        Se pidieron 8."
+        Fíjense que cuenta 14 (lo que realmente llegó), no 16.
+[ ] Cambia la cantidad a 7 -> "Registrar y Devolver a Bodega". --> Folio y PDF.
+
+5.4 Punto de Venta (diseño 3)
+[ ] El título dice "Punto de Venta - Registro de Venta en Mostrador". Si la
+    ventana es chica, la pantalla se desplaza y el carrito no queda tapado.
+[X] Nombre del cliente con números: intenta "Juan2". --> No acepta el número.
+[X] Límite de caracteres: escribe un nombre de más de 60 caracteres.
+    --> Debajo del campo el contador llega a "60/60" en rojo y ya no deja
+        escribir.
+[X] Límite de búsqueda: en el campo de EAN/título escribe un título largo.
+    --> El contador dice "n/30" y a los 30 ya no deja escribir. Borra y
+        escribe 978 seguido de dígitos: el contador cambia a "n/13", no
+        acepta el dígito 14 ni letras después de "978".
+[ ] Escribe 9786073832014 (sin pulsar Enter).
+    --> Aparece el recuadro del libro: LIBRO, "Cien Años de Soledad", autor
+        Gabriel García Márquez, editorial, ISBN / EAN, precio $350.00 y las
+        piezas en piso de venta. Bórralo.
+[X] Sin cliente: agrega 9786073832014 x 2 y pulsa "Procesar Venta e Imprimir
+    Ticket" sin nombre de cliente.
+    --> "El nombre del cliente es obligatorio para registrar la venta"
+[X] Sin stock en piso: agrega 9786070775390 (0 en piso).
+    --> Al pulsar "Añadir al Carrito": ""El Hombre en Busca de Sentido" no
+        tiene piezas en piso de venta". No entra al carrito.
+[ ] Búsqueda por título: escribe "Cien Años", cantidad 2 y Enter.
+    --> Como hay un solo resultado, se agrega directo al carrito.
+    Observa: en el carrito la línea dice el título y, abajo, el autor y el ISBN.
+[ ] Correcto: cliente Ana López, método Tarjeta (ya no hay Transferencia),
+    procesar.
+    --> El ticket lista cada libro con autor, ISBN, precio unitario y
+        subtotal. "Venta completada con éxito". Anota el ticket (en base
+        limpia es el #3).
+
+5.5 Devolución de Cliente (pantalla nueva)
+[ ] Es una sola vista con scroll: "Ticket del cliente" y abajo "Reembolso o
+    cambio"; el resumen con "Registrar devolución" queda fijo abajo.
+[X] Ticket que no existe: 9999 -> "Buscar ticket".
+    --> "El ticket #9999 no existe" (en rojo)
+[ ] Ticket 3 -> muestra cliente, fecha, total y "hace 0 día(s)".
+    Observa: "A devolver" no deja pasar de lo vendido menos lo ya devuelto.
+[X] Cambio por algo más barato: A devolver 1 de Cien Años ($350), elige
+    "Cambio por otro producto" y añade 9771234567010 (revista de $120).
+    --> "No se registró la devolución: El cambio debe ser por productos de
+        igual o mayor precio: devuelve $350.00 y se lleva $120.00"
+[ ] Método de reembolso: solo Efectivo y Tarjeta (ya no hay Transferencia;
+    la API también la rechaza).
+[ ] Correcto: "Reembolso", 1 pieza sin defecto -> "Registrar devolución".
+    --> Reembolso de $350.00; la pieza regresa a piso.
+    (Con "Defecto" marcado, la pieza va a apartados y ya no se vende.)
+
+5.6 Devoluciones a Proveedor (diseño 4) — proveedor destino Planeta Mexico
+[X] Más de 60 piezas: 9786073832014 x 61, motivo Sobrestock,
+    "Añadir a Devolución".
+    --> "Una devolución no puede exceder 60 piezas (llevas 0)"
+[X] Sin motivo: añadir sin elegir motivo.
+    --> "Selecciona el motivo de la devolución"
+[X] Libro de otra editorial: 9786073868723 x 1 (de Penguin), motivo
+    Sobrestock, "Añadir a Devolución". Se valida al añadir, no al registrar.
+    --> ""Un Himno a la Vida" es de la editorial Penguin Random House, no de
+        Planeta Mexico: va en otra devolución". No entra a la lista.
+[X] Más piezas de las que hay: 9786073832014 x 60.
+    --> ""Cien Años de Soledad": solo hay N pieza(s) en bodega y apartados
+        (pides 60)". No entra.
+[ ] Correcto: 9786073832014 x 3 (Sobrestock) y 9788497776639 x 2 (Defecto de
+    imprenta).
+    --> Cada fila dice "Validada" en la columna "Editorial" y a la derecha
+        de la línea de estado "Validación de editorial: Validada".
+[ ] Cambia el proveedor destino a otro y regresa a Planeta Mexico.
+    --> Al cambiar, las filas pasan a "Pendiente" y luego a "No es de esta
+        editorial" (no deja registrar); al regresar a Planeta vuelven a
+        "Validada".
+[ ] "Registrar Solicitud de Devolución".
+    --> Queda PENDIENTE (folio DEV-2026-n). Todavía NO se mueve el stock.
+
+5.7 Mis Devoluciones (pantalla nueva)
+[ ] Aparece "Pendiente" con "En revisión del Jefe" (aún no hay acta).
+
+5.8 Inventario Mensual (pantalla nueva)
+[ ] Con el inventario abierto, la pantalla es una sola vista con scroll y
+    anclas: "Escanear", "Para devolución" y "Conteo"; "Cerrar conteo" queda
+    fijo abajo.
+[ ] "Iniciar inventario" -> escanea 9786073832014 y captura lo contado
+    (por ejemplo 1 menos de lo que dice el sistema).
+[ ] Escanea 9771234567010 (la pidió la editorial en la parte 3.7).
+    --> El EAN y el título salen EN ROJO, con "Separar · pidió la editorial"
+        y el aviso "Este título va a devolución: sepáralo del piso de venta".
+        El pie dice "1 título(s) para separar (devolución)".
+    --> Arriba, en "Para devolución": títulos, piezas a devolver, encontradas
+        en piso y faltan por encontrar (con la base de la guía: 2 títulos,
+        80 piezas). National Geographic dice "45 · piso 10 · bodega 35" y
+        "1 de 10 encontrados" con "Faltan 9" en rojo. Momo (añejado) sale
+        "0 de 5 encontrados".
+[ ] Escanea 9771234567010 otra vez.
+    --> Al momento cambia a "2 de 10 encontrados" y "Faltan 8"; el contador
+        de arriba también se actualiza.
+    (Un título sin ventas ni compras en 90 días sale igual, con
+    "Separar · añejado".)
+[ ] "Cerrar conteo".
+    --> "Inventario #1 cerrado: ... con diferencia, ... a devolución. Queda
+        para revisión ..."
+    (Solo puede haber un inventario abierto a la vez.)
+
+Cerrar Sesión.
+
+
+-------------------------------------------------------------------------------
+ 6. JEFE — APROBACIONES, INVENTARIO Y BITÁCORA (350976899 / 2501)
+-------------------------------------------------------------------------------
+6.1 Aprobación de Devoluciones (diseño 20)
+[ ] El título dice "Control y Aprobación de Devoluciones a Proveedor".
+[ ] Icono del ojo en la devolución de la parte 5.6.
+    --> Lista de lo que se devuelve: EAN, título, piezas y motivo.
+[X] "Rechazar" la devolución de la parte 5.6: primero sale la misma lista
+    para confirmar ("Rechazar devolución"); deja vacías las observaciones
+    y pulsa "Aceptar".
+    --> La ventana no se cierra y el campo se marca en rojo. Tiene contador
+        "0/200": al llegar a 200 ya no deja escribir. Cancela.
+[ ] "Aprobar": confirma viendo la lista ("Aprobar devolución"); nota
+    opcional: "Entregar a Bodega el lunes".
+    --> "Devolución aprobada exitosamente". Ahora sí baja el stock (primero
+        apartados y luego bodega).
+[ ] "Ver Acta PDF" (diseño 21): se guarda solo en Descargas\NovaBook y se
+    abre. Revisa: costo y precio de venta de cada libro, autor
+    bajo el título, quién solicitó y quién autorizó.
+
+6.2 Inventario Mensual (revisión)
+[X] "Rechazar" sin motivo y "Aceptar". --> La ventana no se cierra y el
+    campo se marca en rojo; tiene contador "0/200". Cancela.
+[ ] "Aprobar y ajustar piso" -> el piso se ajusta con la diferencia contada.
+    (En el detalle, 9771234567010 aparece con "Pidió la editorial".)
+[ ] Baja a "Solicitudes de editorial" -> "Marcar atendida" en la de la parte 3.7
+    cuando ya se le devolvió a la editorial.
+
+6.3 Historial de Movimientos / Bitácora (diseño 7)
+[X] Fecha final anterior a la inicial.
+    --> "La fecha final no puede ser anterior a la inicial"
+[ ] Rango de hoy: se ven con chips de color, entre otros:
+      COMPRA      "Recepción de Factura #F-100 ...", "Incidencia #1 · Factura
+                  #F-100 llegó incompleta ...", "Recepción de faltantes ...
+                  incidencia cerrada"
+      TRASLADO    "Requisición REQ-... Bodega-Piso ...", "Requisición REQ-...
+                  corregida al recibir: EAN 9786073832014 16→14 · Mueble: ..."
+      VENTA       la venta de Ana López
+      DEVOLUCIÓN  devolución de cliente, devolución a proveedor y aprobación
+      INVENTARIO, USUARIOS, CATÁLOGO y ACCESO (el login fallido va en rojo)
+[ ] Filtra por cada tipo de evento. Ya no hay páginas: la tabla se recorre
+    con scroll; abajo dice "Mostrando N de M eventos · baja para ver más" y,
+    al llegar al final, se cargan solos los siguientes (de 50 en 50).
+[ ] Elige otro rango (por ejemplo, de ayer a hoy), cambia el tipo de evento,
+    ve a otra pantalla y regresa.
+    --> El rango elegido se conserva. Solo "Hoy" lo regresa al día actual.
+[ ] Elige otro rango y el tipo "COMPRA", "Cerrar Sesión" y vuelve a entrar
+    como Jefe (sin cerrar la app).
+    --> El Historial sigue con el mismo rango y tipo de evento.
+
+6.4 Tickets de Venta (pantalla nueva del hito 2)
+    Menú del Jefe: "Tickets de Venta", debajo de "Historial de Movimientos".
+[ ] Al entrar muestra los tickets de HOY: el #3 (Ana López, TARJETA, 1
+    título, piezas "2 (1 dev.)" en amarillo, $700.00) y el #2 de la semilla
+    (Dra. Carmen Salinas, EFECTIVO, 3 títulos, $484.00), ambos de Aldo Soto.
+    Arriba: "Tickets del rango" 2 y "Total vendido" $1,184.00.
+[ ] Cambia la fecha inicial a ayer -> "Consultar".
+    --> Aparece también el #1 (Ing. Fernando Peña, $1,060.00); total $2,244.00.
+[X] Fecha final anterior a la inicial -> "Consultar".
+    --> "La fecha final no puede ser anterior a la inicial"
+[ ] Ojo (o doble clic) en el #3.
+    --> Ventana "Ticket #3": cliente, fecha, "Vendió Aldo Soto", pago TARJETA,
+        "Dentro de los 15 días para devolución" y la tabla con Cien Años de
+        Soledad: Vendidas 2, Devueltas 1 (en amarillo), precio $350.00.
+        Abajo: "El cliente ya devolvió 1 pieza(s) de este ticket".
+[ ] Búsqueda: escribe "#3" y Enter -> solo el ticket #3. Prueba también
+    "Ana" (cliente) y "Aldo" (vendedor).
+[ ] "Hoy" regresa el rango al día de hoy.
+
+Cerrar Sesión.
+
+
+-------------------------------------------------------------------------------
+ 7. REVISIONES FINALES
+-------------------------------------------------------------------------------
+[ ] Vendedor · Mis Devoluciones: ahora "Aprobado" con "Ver Acta PDF".
+[ ] Gerente · Devoluciones a Proveedor: ve la aprobada y descarga el acta,
+    pero no puede aprobar ni rechazar.
+[ ] Bodega · Seguimiento de Salidas: filtro "Corregidas" -> la salida de la
+    parte 4.5 -> "Ver" -> "Reimprimir" saca el PDF corregido.
+
+
+-------------------------------------------------------------------------------
+ 8. PERMISOS POR ROL (lo que NO debe poder hacer cada uno)
+-------------------------------------------------------------------------------
+[ ] Cada rol solo ve su menú (compara los menús de las partes 2 a 5).
+[ ] Bodega en Proveedores: solo consulta (no registra, edita ni borra; eso
+    es del Jefe).
+[ ] Tickets de Venta solo está en el menú del Jefe (Vendedor, Bodega y
+    Gerente no lo ven; la API les responde 403).
+[ ] El Jefe no toca cuentas de Gerente ni asigna roles; el Gerente no
+    administra catálogos; solo el Jefe aprueba devoluciones.
+    (Si alguien lo intentara por fuera de la app, la API responde
+    "Acceso denegado para el rol ...".)
+
+
+-------------------------------------------------------------------------------
+ 9. SESIÓN Y SEGURIDAD
+-------------------------------------------------------------------------------
+9.1 Baja inmediata (con dos ventanas de la app)
+[ ] Ventana A: entra como Vendedor (628777129 / 8888).
+[ ] Ventana B: entra como Jefe -> Gestión de Usuarios -> icono de borrar en
+    la fila de Aldo (628777129) -> confirmar.
+    --> "Usuario dado de baja exitosamente"
+[ ] Ventana A: haz cualquier cosa (por ejemplo buscar en Consulta de
+    Existencias).
+    --> Vuelve al login con "Usuario inactivo o inexistente. Inicia sesión
+        nuevamente".
+[X] Intenta volver a entrar como 628777129. --> No lo deja entrar.
+[ ] Ventana B: reactiva a Aldo (icono de reactivar) para no dejarlo de baja.
+
+9.2 Inactividad
+[ ] En la ventana abierta con INACTIVIDAD_MINUTOS=1 (preparación, paso 5),
+    entra con cualquier usuario y no toques nada durante 1 minuto.
+    --> Vuelve al login con "Tu sesión se cerró por inactividad."
+    (Normalmente son 15 minutos.)
+
+
+-------------------------------------------------------------------------------
+ 10. SI ALGO SALE DISTINTO
+-------------------------------------------------------------------------------
+- Stock, folios y tickets solo coinciden con una base recién importada y
+  siguiendo el orden. Si se repite una parte, cambian.
+- Para empezar de cero: cierra la app, detén la API (Ctrl+C), reimporta la
+  base (paso 0.2) y vuelve a arrancar.
+- Si el login dice que no se pudo conectar, la API no está corriendo.
+- Anota la pantalla, lo que capturaste y el mensaje exacto para revisarlo.
+===============================================================================

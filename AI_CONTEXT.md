@@ -272,7 +272,7 @@ El Gerente no administra catálogos. No se permiten registros repetidos.
 ## 9. Base de datos y scripts
 
 - `libreria_unificada-definitivo.sql`: esquema y semilla (copia idéntica de
-  `../docs/libreria_unificada-definitivo.sql`); reimportarlo borra la base.
+  `../01_Documentacion/docs/libreria_unificada-definitivo.sql`); reimportarlo borra la base.
 - `seeds.sql`: datos de prueba.
 - Migraciones idempotentes para bases creadas antes de cada cambio:
   - `migracion_observaciones_devolucion.sql`: columna `observaciones`; copia
@@ -293,6 +293,23 @@ Usuarios de prueba: `1001/admin123` (Gerente), `350976899/2501` (Jefe),
 
 - `cargo test`: pruebas unitarias (PDF, anchos de texto, formato de dinero,
   retorno máximo a bodega, URL sin contraseña, etc.).
+- **Pruebas por caso de uso** (`src/pruebas/`, hito 3): un archivo por caso de
+  uso (`cu01_login.rs` … `cu32_tickets_venta.rs`; CU-01 a CU-19 son los del
+  cronograma y CU-20 a CU-32 los que se agregaron del diagrama v4). Cada prueba
+  llama al router real dentro del proceso (JWT, rol, servicio y base) contra
+  la base `Libreria_pruebas`, que `mod.rs` crea en cada corrida desde
+  `libreria_unificada-definitivo.sql` (nunca toca `Libreria`); necesita MySQL
+  de XAMPP encendido. Cada prueba crea sus productos (EAN válidos y únicos, en
+  el género 900 y los muebles P-900/B-900 de pruebas) y corren una a la vez.
+  Encima de cada prueba van tres líneas `/// PU-NN-MM · …`, `/// Entrada:` y
+  `/// Esperado:`; `docs/pruebas/generar.ps1` corre `cargo test` y arma el
+  documento "Pruebas unitarias NovaBook" (.docx y .pdf, sin automatizar Word).
+  `cargo test pruebas` solo corre estas; `cargo test cu15` un caso.
+- **Defectos conocidos** (las 3 pruebas que fallan a propósito, documentados
+  y pendientes de corregir): D-01 el acta no valida que `/pdf/libros|revistas`
+  coincida con el tipo de la devolución (PU-17-06, PU-18-05); D-02 bloqueo
+  mutuo de MariaDB (1213 → 500) con requisiciones simultáneas en sentidos
+  opuestos (PU-13-07).
 - `cargo clippy --all-targets`: debe quedar sin avisos.
 - `test_e2e.sh`: 12 secciones de punta a punta contra una base recién
   importada y la API corriendo. En Windows hay que usar el curl de System32,

@@ -7,6 +7,9 @@ pub mod productos;
 pub mod services;
 pub mod usuarios;
 
+#[cfg(test)]
+mod pruebas;
+
 use axum::Router;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;

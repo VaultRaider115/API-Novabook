@@ -1,0 +1,51 @@
+NovaBook - Pruebas unitarias por caso de uso
+============================================
+
+Esta carpeta va dentro del repo API-Novabook (API-Novabook\pruebas_unitarias)
+y tambien en la carpeta del proyecto (NovaBook-v2\03_Pruebas_unitarias).
+
+Archivos
+--------
+Ejecutar_pruebas_unitarias.bat   doble clic: menu de opciones
+Pruebas_unitarias_NovaBook.ps1   el script (PowerShell)
+Guia_de_pruebas_NovaBook.txt     guia para revisar la app pantalla por pantalla
+Reportes\                        un reporte por corrida (no se sube a git)
+
+Opciones del menu
+-----------------
+1. Revision segun cronograma antes de cambios   CU-01 a CU-14   (103 pruebas)
+2. Hito segun cronograma antes de cambios       CU-01 a CU-19   (136 pruebas)
+3. Revision segun cronograma actualizado        CU-01 a CU-25   (174 pruebas)
+4. Hito segun cronograma actualizado            CU-01 a CU-32   (217 pruebas)
+
+Requisitos en cada laptop
+-------------------------
+- Repo API-Novabook actualizado (git pull) en la rama que trae src\pruebas.
+- Rust (rustup, toolchain stable msvc) y Build Tools de Visual Studio con C++
+  (lo mismo que ya se usa para compilar la API).
+- XAMPP con MySQL/MariaDB encendido en el puerto 3306 (root sin contrasena).
+  Si esta apagado, el script intenta encenderlo.
+- Internet la primera vez (cargo descarga la dependencia de pruebas "tower").
+Las pruebas crean su propia base (Libreria_pruebas): la base Libreria no se
+toca. No hace falta Python ni Qt.
+
+Como correrlo
+-------------
+Doble clic en Ejecutar_pruebas_unitarias.bat y elegir la opcion. Desde una
+terminal de PowerShell (Windows bloquea los .ps1 por omision):
+    .\Ejecutar_pruebas_unitarias.bat
+    .\Ejecutar_pruebas_unitarias.bat -Opcion 2
+    powershell -ExecutionPolicy Bypass -File .\Pruebas_unitarias_NovaBook.ps1 -Opcion 4
+Si no encuentra el repo:  .\Ejecutar_pruebas_unitarias.bat -Opcion 2 -Proyecto C:\ruta\API-Novabook
+
+La primera vez compila todo (unos minutos); despues tarda de 40 a 100 s segun
+la opcion. No cierres MariaDB a la fuerza mientras corre.
+
+Resultado
+---------
+Reportes\<fecha_hora>_opcionN\ con Reporte_pruebas_unitarias.txt y .html,
+resultados.csv y salida_cargo_test.log.
+
+Resultados esperados: fallan 3 pruebas a proposito por dos defectos ya
+documentados (D-01: tipo del acta PDF, PU-17-06 y PU-18-05; D-02: bloqueo mutuo
+con requisiciones simultaneas, PU-13-07). La opcion 1 solo incluye PU-13-07.
